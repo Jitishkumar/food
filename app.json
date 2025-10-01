@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "food-discover",
+    "name": "Food Discover",
     "slug": "food-discover",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,20 +10,49 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#FF6B35"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fooddiscover.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need your location to find nearby restaurants and food",
+        "NSCameraUsageDescription": "We need camera access to upload food photos",
+        "NSPhotoLibraryUsageDescription": "We need photo library access to upload food photos"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#FF6B35"
       },
+      "package": "com.fooddiscover.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "edgeToEdgeEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Food Discover to use your location to find nearby restaurants and food."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to upload food images.",
+          "cameraPermission": "The app needs access to your camera to take photos of food."
+        }
+      ]
+    ]
   }
 }
