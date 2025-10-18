@@ -13,6 +13,9 @@ import AddBusinessScreen from './screens/AddBusinessScreen';
 import AddFoodItemScreen from './screens/AddFoodItemScreen';
 import SpecialFoodsScreen from './screens/SpecialFoodsScreen';
 import BusinessDetailScreen from './screens/BusinessDetailScreen';
+import CategoriesScreen from './screens/CategoriesScreen';
+import ProfileScreen from './screens/ProfileScreen';
+import ManageBusinessScreen from './screens/ManageBusinessScreen';
 
 const Stack = createStackNavigator();
 
@@ -102,6 +105,11 @@ export default function App() {
           // Owner Stack
           <>
             <Stack.Screen name="OwnerDashboard" component={OwnerDashboard} />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={{ headerShown: true, title: 'My Profile' }}
+            />
             <Stack.Screen 
               name="AddBusiness" 
               component={AddBusinessScreen}
@@ -117,6 +125,16 @@ export default function App() {
               component={BusinessDetailScreen}
               options={{ headerShown: true, title: 'Business Details' }}
             />
+            <Stack.Screen
+              name="Categories"
+              component={CategoriesScreen}
+              options={{ headerShown: true, title: 'Categories' }}
+            />
+            <Stack.Screen
+              name="ManageBusiness"
+              component={ManageBusinessScreen}
+              options={{ headerShown: true, title: 'Manage Business' }}
+            />
           </>
         ) : (
           // Customer Stack
@@ -131,6 +149,16 @@ export default function App() {
               name="BusinessDetail" 
               component={BusinessDetailScreen}
               options={{ headerShown: true, title: 'Business Details' }}
+            />
+            <Stack.Screen
+              name="Categories"
+              component={CategoriesScreen}
+              options={{ headerShown: true, title: 'Categories' }}
+            />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={{ headerShown: true, title: 'My Profile' }}
             />
           </>
         )}

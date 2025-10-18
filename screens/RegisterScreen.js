@@ -55,15 +55,12 @@ export default function RegisterScreen({ navigation }) {
       if (authError) throw authError;
 
       // Don't create profile here - it will be created on first login
+      await supabase.auth.signOut();
+
       Alert.alert(
         'Success! 🎉',
-        'Your account has been created successfully!\n\nPlease check your email to verify your account, then you can login.',
-        [
-          { 
-            text: 'Go to Login', 
-            onPress: () => navigation.navigate('Login') 
-          }
-        ]
+        'Your account has been created successfully!\n\nPlease check your email to verify your account, then login with your credentials.',
+        [{ text: 'OK' }]
       );
     } catch (error) {
       Alert.alert('Registration Failed', error.message);

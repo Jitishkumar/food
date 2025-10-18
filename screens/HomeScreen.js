@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Linking,
   Platform,
 } from 'react-native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { supabase } from '../supabase-config';
 
@@ -20,6 +21,9 @@ export default function HomeScreen({ navigation }) {
   const [nearbyFood, setNearbyFood] = useState([]);
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+
+  const route = useRoute();
 
   const ranges = [1, 5, 10, 20, 30, 40];
 
@@ -27,6 +31,19 @@ export default function HomeScreen({ navigation }) {
     requestLocationPermission();
     loadCategories();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (route.params?.categoryId) {
+        setSelectedCategory({
+          id: route.params.categoryId,
+          name: route.params.categoryName,
+        });
+        navigation.setParams({ categoryId: undefined, categoryName: undefined });
+      }
+      return () => {};
+    }, [route.params?.categoryId, route.params?.categoryName, navigation])
+  );
 
   const requestLocationPermission = async () => {
     try {
@@ -71,6 +88,7 @@ export default function HomeScreen({ navigation }) {
         user_lon: location.longitude,
         search_radius: selectedRange,
         search_query: searchQuery || null,
+        search_category: selectedCategory?.id || null,
       });
 
       if (error) throw error;
@@ -101,9 +119,14 @@ export default function HomeScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🍽️ Food Discover</Text>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.profileButton}>
+            <Text style={styles.profileText}>Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={styles.content}>
@@ -142,6 +165,20 @@ export default function HomeScreen({ navigation }) {
               </TouchableOpacity>
             ))}
           </ScrollView>
+
+          {selectedCategory && (
+            <View style={styles.selectedCategoryContainer}>
+              <Text style={styles.selectedCategoryText}>
+                Category: {selectedCategory.name}
+              </Text>
+              <TouchableOpacity
+                style={styles.clearCategoryButton}
+                onPress={() => setSelectedCategory(null)}
+              >
+                <Text style={styles.clearCategoryText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <TouchableOpacity
             style={styles.searchButton}
@@ -259,6 +296,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    marginRight: 8,
+  },
+  profileText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   logoutButton: {
     padding: 8,
   },
@@ -319,6 +373,33 @@ const styles = StyleSheet.create({
   },
   rangeTextActive: {
     color: '#fff',
+  },
+  selectedCategoryContainer: {
+    marginTop: 12,
+    marginBottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 107, 53, 0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectedCategoryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF6B35',
+  },
+  clearCategoryButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#FF6B35',
+  },
+  clearCategoryText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   searchButton: {
     backgroundColor: '#FF6B35',

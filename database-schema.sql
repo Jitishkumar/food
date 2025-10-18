@@ -114,13 +114,11 @@ BEGIN
     )
   );
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
-
 -- Function to search businesses within range
 CREATE OR REPLACE FUNCTION search_businesses_nearby(
   user_lat DECIMAL,
   user_lon DECIMAL,
-  search_radius INTEGER, -- in km
+  search_radius INTEGER,
   search_category UUID DEFAULT NULL,
   search_query TEXT DEFAULT NULL
 )
@@ -157,7 +155,16 @@ BEGIN
   WHERE 
     b.is_active = true
     AND calculate_distance(user_lat, user_lon, b.latitude, b.longitude) <= search_radius
-    AND (search_category IS NULL OR fi.category_id = search_category)
+    AND (
+      search_category IS NULL OR
+      fi.category_id = search_category OR
+      EXISTS (
+        SELECT 1
+        FROM food_items fi2
+        WHERE fi2.business_id = b.id
+          AND fi2.category_id = search_category
+      )
+    )
     AND (search_query IS NULL OR 
          b.business_name ILIKE '%' || search_query || '%' OR
          fi.name ILIKE '%' || search_query || '%')

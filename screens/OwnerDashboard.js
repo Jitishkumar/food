@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../supabase-config';
 
 export default function OwnerDashboard({ navigation }) {
@@ -18,6 +19,12 @@ export default function OwnerDashboard({ navigation }) {
   useEffect(() => {
     loadBusinesses();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadBusinesses();
+    }, [])
+  );
 
   const loadBusinesses = async () => {
     setLoading(true);
@@ -67,9 +74,17 @@ export default function OwnerDashboard({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🏪 Owner Dashboard</Text>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Profile')}
+            style={styles.profileButton}
+          >
+            <Text style={styles.profileText}>Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -118,7 +133,7 @@ export default function OwnerDashboard({ navigation }) {
               <TouchableOpacity
                 key={business.id}
                 style={styles.businessCard}
-                onPress={() => navigation.navigate('ManageBusiness', { businessId: business.id })}
+                onPress={() => navigation.navigate('BusinessDetail', { businessId: business.id })}
               >
                 <View style={styles.businessInfo}>
                   <Text style={styles.businessName}>{business.business_name}</Text>
@@ -137,6 +152,17 @@ export default function OwnerDashboard({ navigation }) {
                     }}
                   >
                     <Text style={styles.actionBtnText}>➕ Add Food</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.actionSecondaryBtn}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      navigation.navigate('ManageBusiness', {
+                        businessId: business.id,
+                      });
+                    }}
+                  >
+                    <Text style={styles.actionSecondaryBtnText}>✏️ Edit</Text>
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
@@ -165,6 +191,22 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  profileButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    marginRight: 8,
+  },
+  profileText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   logoutButton: {
     padding: 8,
@@ -263,6 +305,7 @@ const styles = StyleSheet.create({
   businessActions: {
     flexDirection: 'row',
     gap: 8,
+    flexWrap: 'wrap',
   },
   actionBtn: {
     flex: 1,
@@ -275,6 +318,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#333',
+  },
+  actionSecondaryBtn: {
+    flex: 1,
+    backgroundColor: '#fff5f0',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FF6B35',
+  },
+  actionSecondaryBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF6B35',
   },
   emptyState: {
     alignItems: 'center',
