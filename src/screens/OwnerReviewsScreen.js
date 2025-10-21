@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 export default function OwnerReviewsScreen({ navigation }) {
   const [reviews, setReviews] = useState([]);

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 export default function AddBusinessScreen({ navigation }) {
   const [businessName, setBusinessName] = useState('');

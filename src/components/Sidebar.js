@@ -8,7 +8,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 import AccountSwitcher from './AccountSwitcher';
 
 const Sidebar = ({ navigation, isVisible, onClose }) => {

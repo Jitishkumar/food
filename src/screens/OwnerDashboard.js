@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 import Sidebar from '../components/Sidebar';
 import OwnerReviewsScreen from './OwnerReviewsScreen';
 

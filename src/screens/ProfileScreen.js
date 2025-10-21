@@ -8,7 +8,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 const ProfileScreen = ({ navigation, route }) => {
   const [profile, setProfile] = useState(null);

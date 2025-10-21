@@ -10,7 +10,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 export default function RegisterScreen({ navigation }) {
   const [fullName, setFullName] = useState('');

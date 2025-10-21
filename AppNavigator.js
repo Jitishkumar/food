@@ -5,18 +5,18 @@ import { Text, Platform, View, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Import screens
-import LoginScreen from './screens/LoginScreen';
-import RegisterScreen from './screens/RegisterScreen';
-import HomeScreen from './screens/HomeScreen';
-import NearbyScreen from './screens/NearbyScreen';
-import OwnerDashboard from './screens/OwnerDashboard';
-import AddBusinessScreen from './screens/AddBusinessScreen';
-import AddFoodItemScreen from './screens/AddFoodItemScreen';
-import SpecialFoodsScreen from './screens/SpecialFoodsScreen';
-import BusinessDetailScreen from './screens/BusinessDetailScreen';
-import CategoriesScreen from './screens/CategoriesScreen';
-import ProfileScreen from './screens/ProfileScreen';
-import ManageBusinessScreen from './screens/ManageBusinessScreen';
+import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import NearbyScreen from './src/screens/NearbyScreen';
+import OwnerDashboard from './src/screens/OwnerDashboard';
+import AddBusinessScreen from './src/screens/AddBusinessScreen';
+import AddFoodItemScreen from './src/screens/AddFoodItemScreen';
+import SpecialFoodsScreen from './src/screens/SpecialFoodsScreen';
+import BusinessDetailScreen from './src/screens/BusinessDetailScreen';
+import CategoriesScreen from './src/screens/CategoriesScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import ManageBusinessScreen from './src/screens/ManageBusinessScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();

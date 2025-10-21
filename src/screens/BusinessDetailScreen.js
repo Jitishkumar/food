@@ -10,7 +10,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 export default function BusinessDetailScreen({ route, navigation }) {
   const { businessId } = route.params;

@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase-config';
-import { AccountManager } from './utils/AccountManager';
+import { AccountManager } from './src/utils/AccountManager';
 import AppNavigator from './AppNavigator';
 
 export default function App() {

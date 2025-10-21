@@ -8,7 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 const CategoriesScreen = ({ navigation, route }) => {
   const [categories, setCategories] = useState([]);

@@ -8,7 +8,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 export default function SpecialFoodsScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');

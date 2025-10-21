@@ -14,7 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 export default function NearbyScreen({ navigation }) {
   const insets = useSafeAreaInsets();

@@ -10,7 +10,7 @@ import {
   Alert,
   Switch,
 } from 'react-native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 const ManageBusinessScreen = ({ route, navigation }) => {
   const { businessId } = route.params;

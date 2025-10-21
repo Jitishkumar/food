@@ -12,7 +12,7 @@ import {
   Switch,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 
 export default function AddFoodItemScreen({ route, navigation }) {
   const { businessId } = route.params;

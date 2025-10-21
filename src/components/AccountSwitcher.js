@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { supabase } from '../supabase-config';
+import { supabase } from '../../supabase-config';
 import { AccountManager } from '../utils/AccountManager';
 
 export default function AccountSwitcher({ visible, onClose, currentUserId, onAddAccount }) {
