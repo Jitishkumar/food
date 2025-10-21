@@ -7,14 +7,21 @@ import {
   ScrollView,
   Alert,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { supabase } from '../supabase-config';
+import Sidebar from '../components/Sidebar';
+import OwnerReviewsScreen from './OwnerReviewsScreen';
 
-export default function OwnerDashboard({ navigation }) {
+const Tab = createBottomTabNavigator();
+
+function DashboardTab({ navigation }) {
   const [businesses, setBusinesses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ totalBusinesses: 0, totalFoodItems: 0, totalReviews: 0 });
+  const [sidebarVisible, setSidebarVisible] = useState(false);
 
   useEffect(() => {
     loadBusinesses();
@@ -65,28 +72,50 @@ export default function OwnerDashboard({ navigation }) {
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleAddBusiness = () => {
+    // Check if user already has businesses
+    if (businesses.length > 0) {
+      // Show warning about location validation
+      Alert.alert(
+        "Location Validation",
+        "You cannot create multiple businesses at the same location. Each business must have a unique location.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Continue", 
+            onPress: () => navigation.navigate('AddBusiness')
+          }
+        ]
+      );
+    } else {
+      // First business, no validation needed
+      navigation.navigate('AddBusiness');
+    }
+  };
+
+  const toggleSidebar = () => {
+    setSidebarVisible(!sidebarVisible);
   };
 
   return (
     <View style={styles.container}>
+      {/* Sidebar */}
+      <Sidebar 
+        navigation={navigation}
+        isVisible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+      />
+      
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>🏪 Owner Dashboard</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Profile')}
-            style={styles.profileButton}
-          >
-            <Text style={styles.profileText}>Profile</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={toggleSidebar} style={styles.menuButton}>
+            <Text style={styles.menuButtonText}>☰</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+          <Text style={styles.headerTitle}>🏪 Owner Dashboard</Text>
         </View>
       </View>
-
+      
       <ScrollView
         style={styles.content}
         refreshControl={
@@ -112,7 +141,7 @@ export default function OwnerDashboard({ navigation }) {
         {/* Add Business Button */}
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => navigation.navigate('AddBusiness')}
+          onPress={handleAddBusiness}
         >
           <Text style={styles.addButtonText}>➕ Add New Business</Text>
         </TouchableOpacity>
@@ -174,6 +203,53 @@ export default function OwnerDashboard({ navigation }) {
   );
 }
 
+export default function OwnerDashboard({ navigation }) {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: '#FF6B35',
+        tabBarInactiveTintColor: '#999',
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopWidth: 1,
+          borderTopColor: '#e0e0e0',
+          paddingBottom: 5,
+          paddingTop: 5,
+          height: 60,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
+      }}
+    >
+      <Tab.Screen
+        name="DashboardTab"
+        options={{
+          tabBarLabel: 'Dashboard',
+          tabBarIcon: ({ color, size }) => (
+            <Text style={{ fontSize: 24 }}>🏪</Text>
+          ),
+        }}
+      >
+        {(props) => <DashboardTab {...props} navigation={navigation} />}
+      </Tab.Screen>
+      <Tab.Screen
+        name="ReviewsTab"
+        options={{
+          tabBarLabel: 'Reviews',
+          tabBarIcon: ({ color, size }) => (
+            <Text style={{ fontSize: 24 }}>⭐</Text>
+          ),
+        }}
+      >
+        {(props) => <OwnerReviewsScreen {...props} navigation={navigation} />}
+      </Tab.Screen>
+    </Tab.Navigator>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -186,6 +262,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuButton: {
+    marginRight: 12,
+    padding: 4,
+  },
+  menuButtonText: {
+    fontSize: 24,
+    color: '#fff',
   },
   headerTitle: {
     fontSize: 24,
@@ -221,29 +309,31 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'row',
-    padding: 20,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    justifyContent: 'space-between',
     padding: 16,
-    alignItems: 'center',
+    backgroundColor: '#fff',
+    marginTop: 16,
+    marginHorizontal: 16,
+    borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
+  },
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 12,
   },
   statNumber: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#FF6B35',
+    color: '#4a90e2',
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#666',
   },
   addButton: {

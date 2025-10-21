@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,19 @@ import {
   ScrollView,
 } from 'react-native';
 import { supabase } from '../supabase-config';
+import { AccountManager } from '../utils/AccountManager';
 
-export default function LoginScreen({ navigation }) {
-  const [email, setEmail] = useState('');
+export default function LoginScreen({ navigation, route }) {
+  const [email, setEmail] = useState(route?.params?.prefilledEmail || '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Update email if route params change
+  useEffect(() => {
+    if (route?.params?.prefilledEmail) {
+      setEmail(route.params.prefilledEmail);
+    }
+  }, [route?.params?.prefilledEmail]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -25,14 +33,32 @@ export default function LoginScreen({ navigation }) {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
       });
 
-      if (error) throw error;
+      if (authError) throw authError;
 
-      // Profile is created automatically by database trigger
+      // Get user profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      // Save account for quick switching (store refresh token + stored password)
+      await AccountManager.saveAccount(
+        authData.user.id,
+        profileData.email,
+        profileData.full_name,
+        profileData.user_type,
+        authData.session?.refresh_token ?? null,
+        password
+      );
+
       // Navigation will be handled by App.js auth state listener
     } catch (error) {
       Alert.alert('Login Failed', error.message);

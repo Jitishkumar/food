@@ -1,47 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase-config';
-
-// Import screens
-import LoginScreen from './screens/LoginScreen';
-import RegisterScreen from './screens/RegisterScreen';
-import HomeScreen from './screens/HomeScreen';
-import OwnerDashboard from './screens/OwnerDashboard';
-import AddBusinessScreen from './screens/AddBusinessScreen';
-import AddFoodItemScreen from './screens/AddFoodItemScreen';
-import SpecialFoodsScreen from './screens/SpecialFoodsScreen';
-import BusinessDetailScreen from './screens/BusinessDetailScreen';
-import CategoriesScreen from './screens/CategoriesScreen';
-import ProfileScreen from './screens/ProfileScreen';
-import ManageBusinessScreen from './screens/ManageBusinessScreen';
-
-const Stack = createStackNavigator();
+import { AccountManager } from './utils/AccountManager';
+import AppNavigator from './AppNavigator';
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
   const [userType, setUserType] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
+    // One-time migration: Clear old tokens after Supabase settings update
+    const migrateOldTokens = async () => {
+      try {
+        const migrated = await AsyncStorage.getItem('@tokens_migrated_v2');
+        if (!migrated) {
+          console.log('🔄 Migrating: Clearing old expired tokens...');
+          await AccountManager.clearAll();
+          await AsyncStorage.setItem('@tokens_migrated_v2', 'true');
+          console.log('✅ Migration complete. Please log in again.');
+        }
+      } catch (error) {
+        console.error('Migration error:', error);
+      }
+    };
+
+    migrateOldTokens();
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
       if (session) {
-        setUser(session.user);
         loadUserProfile(session.user.id);
       } else {
         setLoading(false);
       }
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
       if (session) {
-        setUser(session.user);
         loadUserProfile(session.user.id);
       } else {
-        setUser(null);
         setUserType(null);
         setLoading(false);
       }
@@ -59,7 +60,6 @@ export default function App() {
         .single();
 
       if (error) {
-        // If profile doesn't exist yet, sign out and show message
         if (error.code === 'PGRST116') {
           console.log('Profile not found, user needs to complete registration');
           await supabase.auth.signOut();
@@ -72,7 +72,6 @@ export default function App() {
       setUserType(data?.user_type);
     } catch (error) {
       console.error('Error loading profile:', error);
-      // Sign out on error to prevent stuck state
       await supabase.auth.signOut();
     } finally {
       setLoading(false);
@@ -89,80 +88,7 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          cardStyle: { backgroundColor: '#fff' },
-        }}
-      >
-        {!user ? (
-          // Auth Stack
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
-        ) : userType === 'owner' ? (
-          // Owner Stack
-          <>
-            <Stack.Screen name="OwnerDashboard" component={OwnerDashboard} />
-            <Stack.Screen
-              name="Profile"
-              component={ProfileScreen}
-              options={{ headerShown: true, title: 'My Profile' }}
-            />
-            <Stack.Screen 
-              name="AddBusiness" 
-              component={AddBusinessScreen}
-              options={{ headerShown: true, title: 'Add Business' }}
-            />
-            <Stack.Screen 
-              name="AddFoodItem" 
-              component={AddFoodItemScreen}
-              options={{ headerShown: true, title: 'Add Food Item' }}
-            />
-            <Stack.Screen 
-              name="BusinessDetail" 
-              component={BusinessDetailScreen}
-              options={{ headerShown: true, title: 'Business Details' }}
-            />
-            <Stack.Screen
-              name="Categories"
-              component={CategoriesScreen}
-              options={{ headerShown: true, title: 'Categories' }}
-            />
-            <Stack.Screen
-              name="ManageBusiness"
-              component={ManageBusinessScreen}
-              options={{ headerShown: true, title: 'Manage Business' }}
-            />
-          </>
-        ) : (
-          // Customer Stack
-          <>
-            <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen 
-              name="SpecialFoods" 
-              component={SpecialFoodsScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen 
-              name="BusinessDetail" 
-              component={BusinessDetailScreen}
-              options={{ headerShown: true, title: 'Business Details' }}
-            />
-            <Stack.Screen
-              name="Categories"
-              component={CategoriesScreen}
-              options={{ headerShown: true, title: 'Categories' }}
-            />
-            <Stack.Screen
-              name="Profile"
-              component={ProfileScreen}
-              options={{ headerShown: true, title: 'My Profile' }}
-            />
-          </>
-        )}
-      </Stack.Navigator>
+      <AppNavigator user={session?.user} userType={userType} />
     </NavigationContainer>
   );
 }

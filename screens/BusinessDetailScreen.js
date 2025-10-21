@@ -8,6 +8,7 @@ import {
   Alert,
   Linking,
   Platform,
+  Modal,
 } from 'react-native';
 import { supabase } from '../supabase-config';
 
@@ -19,6 +20,74 @@ export default function BusinessDetailScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [userRating, setUserRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [selectedDeliveryOption, setSelectedDeliveryOption] = useState('pickup');
+
+  const handleBuyPress = async (item) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      
+      if (!userData || !userData.user) {
+        Alert.alert(
+          "Login Required", 
+          "Please login to purchase food items.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Login", onPress: () => navigation.navigate('Login') }
+          ]
+        );
+        return;
+      }
+      
+      Alert.alert(
+        `Buy ${item.name}`,
+        `Would you like to order this item?\n\nDelivery Option: ${selectedDeliveryOption === 'pickup' ? 'Pickup at location' : 'Cash on delivery'}`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Confirm", 
+            onPress: async () => {
+              // Create purchase notification
+              const { error } = await supabase
+                .from('purchase_notifications')
+                .insert([
+                  {
+                    food_item_id: item.id,
+                    customer_id: userData.user.id,
+                    business_id: businessId,
+                    quantity: 1,
+                    status: 'pending',
+                    delivery_option: selectedDeliveryOption
+                  }
+                ]);
+                
+              if (error) {
+                Alert.alert("Error", "Failed to place order. Please try again.");
+                return;
+              }
+              
+              // Update inventory count if available
+              if (item.inventory_count !== null && item.inventory_count > 0) {
+                await supabase
+                  .from('food_items')
+                  .update({ inventory_count: item.inventory_count - 1 })
+                  .eq('id', item.id);
+                  
+                // Refresh food items to show updated inventory
+                loadBusinessDetails();
+              }
+              
+              Alert.alert(
+                "Order Placed!", 
+                "The owner has been notified of your purchase request."
+              );
+            } 
+          }
+        ]
+      );
+    } catch (error) {
+      Alert.alert("Error", error.message);
+    }
+  };
 
   useEffect(() => {
     loadBusinessDetails();
@@ -162,6 +231,30 @@ export default function BusinessDetailScreen({ route, navigation }) {
         )}
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Delivery Options</Text>
+        <View style={styles.deliveryOptions}>
+          <TouchableOpacity 
+            style={[
+              styles.deliveryOption, 
+              selectedDeliveryOption === 'pickup' && styles.deliveryOptionSelected
+            ]}
+            onPress={() => setSelectedDeliveryOption('pickup')}
+          >
+            <Text style={styles.deliveryOptionText}>🏪 Pickup at Location</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[
+              styles.deliveryOption, 
+              selectedDeliveryOption === 'delivery' && styles.deliveryOptionSelected
+            ]}
+            onPress={() => setSelectedDeliveryOption('delivery')}
+          >
+            <Text style={styles.deliveryOptionText}>🚚 Cash on Delivery</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Food Items */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Menu ({foodItems.length} items)</Text>
@@ -173,8 +266,25 @@ export default function BusinessDetailScreen({ route, navigation }) {
               {item.description && (
                 <Text style={styles.foodItemDesc}>{item.description}</Text>
               )}
-              {item.price && (
-                <Text style={styles.foodItemPrice}>₹{item.price}</Text>
+              <View style={styles.foodItemDetails}>
+                {item.price && (
+                  <Text style={styles.foodItemPrice}>₹{item.price}</Text>
+                )}
+                {item.inventory_count !== null && (
+                  <Text style={styles.inventoryCount}>
+                    {item.inventory_count > 0 
+                      ? `${item.inventory_count} available` 
+                      : "Out of stock"}
+                  </Text>
+                )}
+              </View>
+              {item.allow_purchase && item.inventory_count !== 0 && (
+                <TouchableOpacity 
+                  style={styles.buyButton}
+                  onPress={() => handleBuyPress(item)}
+                >
+                  <Text style={styles.buyButtonText}>🛒 Buy</Text>
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -322,10 +432,55 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 4,
   },
+  foodItemDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   foodItemPrice: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#FF6B35',
+  },
+  inventoryCount: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  buyButton: {
+    backgroundColor: '#FF6B35',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  buyButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  deliveryOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  deliveryOption: {
+    flex: 1,
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: 'center',
+  },
+  deliveryOptionSelected: {
+    backgroundColor: '#FFE0D3',
+    borderColor: '#FF6B35',
+    borderWidth: 1,
+  },
+  deliveryOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   reviewCard: {
     padding: 12,

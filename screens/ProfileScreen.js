@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { supabase } from '../supabase-config';
 
-const ProfileScreen = ({ navigation }) => {
+const ProfileScreen = ({ navigation, route }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
@@ -69,9 +69,12 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigation.replace('Login');
+  const handleBack = () => {
+    if (profile?.user_type === 'owner') {
+      navigation.navigate('OwnerDashboard');
+    } else {
+      navigation.navigate('Home');
+    }
   };
 
   if (loading) {
@@ -87,7 +90,7 @@ const ProfileScreen = ({ navigation }) => {
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>Profile information not found.</Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleLogout}>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.replace('Login')}>
           <Text style={styles.primaryButtonText}>Sign In Again</Text>
         </TouchableOpacity>
       </View>
@@ -145,11 +148,8 @@ const ProfileScreen = ({ navigation }) => {
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Account Actions</Text>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.secondaryButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.dangerButton} onPress={handleLogout}>
-          <Text style={styles.dangerButtonText}>Sign Out</Text>
+        <TouchableOpacity style={styles.secondaryButton} onPress={handleBack}>
+          <Text style={styles.secondaryButtonText}>← Back to Dashboard</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -164,106 +164,99 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2933',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 6,
-    marginBottom: 20,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1f2933',
-    marginBottom: 12,
-  },
-  row: {
-    marginBottom: 12,
-  },
-  label: {
-    fontSize: 13,
-    color: '#9aa5b1',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 16,
-    color: '#364152',
-    fontWeight: '600',
-  },
-  helperText: {
-    fontSize: 14,
-    color: '#52606d',
-    marginBottom: 16,
-  },
-  primaryButton: {
-    backgroundColor: '#FF6B35',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  secondaryButton: {
-    backgroundColor: '#edeff2',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  secondaryButtonText: {
-    color: '#364152',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  dangerButton: {
-    backgroundColor: '#fee2e2',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  dangerButtonText: {
-    color: '#b91c1c',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#b91c1c',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f8f9fa',
   },
   loadingText: {
     marginTop: 12,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#dc2626',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#6b7280',
+    marginBottom: 24,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  label: {
+    fontSize: 16,
     color: '#6b7280',
   },
+  value: {
+    fontSize: 16,
+    color: '#1f2937',
+    fontWeight: '500',
+  },
+  helperText: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
+  primaryButton: {
+    backgroundColor: '#FF6B35',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  secondaryButtonText: {
+    color: '#4b5563',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   disabledButton: {
-    opacity: 0.6,
+    opacity: 0.7,
   },
 });
 

@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,6 +24,8 @@ export default function AddBusinessScreen({ navigation }) {
   const [location, setLocation] = useState(null);
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [locationLocked, setLocationLocked] = useState(false);
+  const [fetchingLocation, setFetchingLocation] = useState(true);
 
   const businessTypes = [
     { value: 'restaurant', label: '🍽️ Restaurant' },
@@ -34,18 +37,31 @@ export default function AddBusinessScreen({ navigation }) {
   ];
 
   useEffect(() => {
-    getCurrentLocation();
+    // Don't automatically fetch location on load
+    setFetchingLocation(false);
   }, []);
 
   const getCurrentLocation = async () => {
+    if (locationLocked) {
+      Alert.alert('Location Locked', 'Your business location has been locked and cannot be changed.');
+      return;
+    }
+    
+    setFetchingLocation(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'Location permission is required');
+        setFetchingLocation(false);
         return;
       }
 
-      const currentLocation = await Location.getCurrentPositionAsync({});
+      // Force high accuracy and no caching to ensure we get the actual current location
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+        maximumAge: 0 // Don't use cached location data
+      });
+      
       setLocation(currentLocation.coords);
 
       // Get address from coordinates
@@ -58,9 +74,27 @@ export default function AddBusinessScreen({ navigation }) {
         const addr = addressData[0];
         setAddress(`${addr.street || ''}, ${addr.city || ''}, ${addr.region || ''}`);
       }
+      
+      // Clear any default address that might have been set
+      if (!addressData[0]) {
+        setAddress('');
+      }
     } catch (error) {
       Alert.alert('Error', 'Could not get location');
+      setAddress(''); // Clear address on error
+    } finally {
+      setFetchingLocation(false);
     }
+  };
+  
+  const lockLocation = () => {
+    if (!location) {
+      Alert.alert('Error', 'Please get your current location first');
+      return;
+    }
+    
+    setLocationLocked(true);
+    Alert.alert('Location Locked', 'Your business location has been locked. This cannot be changed later.');
   };
 
   const pickImage = async () => {
@@ -181,11 +215,17 @@ export default function AddBusinessScreen({ navigation }) {
         />
 
         <TextInput
-          style={styles.input}
-          placeholder="Address"
+          style={[styles.input, (location || locationLocked) && styles.disabledInput]}
+          placeholder="Address (Auto-filled when location is fetched)"
           placeholderTextColor="#999"
           value={address}
-          onChangeText={setAddress}
+          onChangeText={(text) => {
+            // Only allow changes if location is not set or locked
+            if (!location && !locationLocked) {
+              setAddress(text);
+            }
+          }}
+          editable={!location && !locationLocked}
           multiline
         />
 
@@ -206,15 +246,53 @@ export default function AddBusinessScreen({ navigation }) {
         </TouchableOpacity>
 
         <View style={styles.locationInfo}>
-          <Text style={styles.locationLabel}>📍 Current Location:</Text>
-          <Text style={styles.locationText}>
-            {location
-              ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`
-              : 'Getting location...'}
+          <Text style={styles.locationLabel}>
+            📍 {locationLocked ? 'Locked Location:' : 'Current Location:'}
           </Text>
-          <TouchableOpacity onPress={getCurrentLocation}>
-            <Text style={styles.refreshLocation}>🔄 Refresh Location</Text>
-          </TouchableOpacity>
+          
+          {fetchingLocation ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#FF6B35" />
+              <Text style={styles.loadingText}>Getting your location...</Text>
+            </View>
+          ) : (
+            <Text style={styles.locationText}>
+              {location
+                ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`
+                : 'Location not available'}
+            </Text>
+          )}
+          
+          <View style={styles.locationActions}>
+            {!locationLocked && (
+              <TouchableOpacity 
+                style={[styles.locationButton, styles.fetchButton]} 
+                onPress={getCurrentLocation}
+                disabled={fetchingLocation}
+              >
+                <Text style={styles.locationButtonText}>
+                  📍 Fetch Current Location
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            {location && !locationLocked && (
+              <TouchableOpacity 
+                style={[styles.locationButton, styles.lockButton]} 
+                onPress={lockLocation}
+              >
+                <Text style={styles.locationButtonText}>
+                  🔒 Lock Location
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            {locationLocked && (
+              <View style={styles.lockedBadge}>
+                <Text style={styles.lockedText}>🔒 Location Locked</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         <TouchableOpacity
@@ -257,13 +335,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    fontSize: 16,
     marginBottom: 16,
+    fontSize: 16,
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
+  disabledInput: {
+    backgroundColor: '#f5f5f5',
+    color: '#666',
+    borderColor: '#ccc',
+  },
   textArea: {
-    height: 100,
+    height: 120,
     textAlignVertical: 'top',
   },
   typeGrid: {
@@ -323,7 +406,58 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 8,
+    marginBottom: 12,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  locationActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  locationButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FF6B35',
+    marginRight: 8,
+  },
+  locationButtonText: {
+    color: '#FF6B35',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  fetchButton: {
+    backgroundColor: '#f0f8ff',
+    borderColor: '#4169e1',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+  },
+  lockButton: {
+    backgroundColor: '#FF6B35',
+  },
+  lockedBadge: {
+    backgroundColor: '#e0f2f1',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4db6ac',
+  },
+  lockedText: {
+    color: '#00897b',
+    fontWeight: '600',
+    fontSize: 14,
   },
   refreshLocation: {
     fontSize: 14,

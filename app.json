@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Food Discover",
+    "name": "LocalBites",
     "slug": "food-discover",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -28,11 +28,12 @@
       },
       "package": "com.fooddiscover.app",
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ],
       "edgeToEdgeEnabled": true
     },
@@ -53,6 +54,12 @@
           "cameraPermission": "The app needs access to your camera to take photos of food."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "04d3d295-6a42-4231-9d71-68ee9818983e"
+      }
+    },
+    "owner": "time.da"
   }
 }

@@ -10,11 +10,15 @@ import {
   Linking,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { supabase } from '../supabase-config';
+import Sidebar from '../components/Sidebar';
 
 export default function HomeScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 80 + (insets.bottom > 0 ? insets.bottom : 20);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRange, setSelectedRange] = useState(5); // default 5km
   const [location, setLocation] = useState(null);
@@ -22,6 +26,8 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [sidebarVisible, setSidebarVisible] = useState(false);
+  const [purchaseInProgress, setPurchaseInProgress] = useState(false);
 
   const route = useRoute();
 
@@ -49,14 +55,91 @@ export default function HomeScreen({ navigation }) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to find nearby food');
+        Alert.alert(
+          'Location Permission Required',
+          'Please enable location services to find food near you. You can enable it in your device settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Open Settings',
+              onPress: () => {
+                Platform.OS === 'ios' 
+                  ? Linking.openURL('app-settings:')
+                  : Linking.openSettings();
+              }
+            }
+          ]
+        );
         return;
       }
 
-      const currentLocation = await Location.getCurrentPositionAsync({});
+      // Get location with high accuracy
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+        maximumAge: 10000, // Use cached location if less than 10 seconds old
+        timeout: 5000 // Timeout after 5 seconds
+      });
+      
       setLocation(currentLocation.coords);
     } catch (error) {
-      Alert.alert('Error', 'Could not get your location');
+      console.error('Location error:', error);
+      Alert.alert(
+        'Location Error',
+        'Could not get your location. Please check if location services are enabled.',
+        [
+          { text: 'Try Again', onPress: requestLocationPermission },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    }
+  };
+
+  const searchNearby = async () => {
+    // If no location, try to get it first
+    if (!location) {
+      await requestLocationPermission();
+      if (!location) {
+        return; // Exit if still no location after request
+      }
+    }
+
+    setLoading(true);
+    try {
+      // Search for food items instead of businesses
+      const { data, error } = await supabase.rpc('search_food_items_nearby', {
+        user_lat: location.latitude,
+        user_lon: location.longitude,
+        search_radius: selectedRange,
+        search_query: searchQuery || null,
+        search_category: selectedCategory?.id || null,
+      });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setNearbyFood(data);
+      } else {
+        // No results found
+        Alert.alert(
+          'No Results',
+          `No food items found within ${selectedRange}km${searchQuery ? ` matching "${searchQuery}"` : ''}${selectedCategory ? ` in category "${selectedCategory.name}"` : ''}.`,
+          [
+            { 
+              text: 'Increase Range',
+              onPress: () => setSelectedRange(prev => {
+                const nextRange = ranges.find(r => r > prev);
+                return nextRange || prev;
+              })
+            },
+            { text: 'OK', style: 'cancel' }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      Alert.alert('Error', 'Failed to search nearby food items. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -74,32 +157,6 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const searchNearby = async () => {
-    if (!location) {
-      Alert.alert('Error', 'Location not available. Please enable location services.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Search for businesses with food items
-      const { data, error } = await supabase.rpc('search_businesses_nearby', {
-        user_lat: location.latitude,
-        user_lon: location.longitude,
-        search_radius: selectedRange,
-        search_query: searchQuery || null,
-        search_category: selectedCategory?.id || null,
-      });
-
-      if (error) throw error;
-      setNearbyFood(data || []);
-    } catch (error) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const openInMaps = (latitude, longitude, businessName) => {
     const url = Platform.OS === 'ios'
       ? `maps://app?daddr=${latitude},${longitude}`
@@ -110,26 +167,82 @@ export default function HomeScreen({ navigation }) {
     });
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handlePurchase = async (item) => {
+    if (purchaseInProgress) return;
+    
+    setPurchaseInProgress(true);
+    try {
+      // Check if inventory is still available
+      const { data: currentItem, error: checkError } = await supabase
+        .from('food_items')
+        .select('inventory_count, allow_purchase')
+        .eq('id', item.id)
+        .single();
+      
+      if (checkError) throw checkError;
+      
+      if (!currentItem || currentItem.inventory_count < 1 || !currentItem.allow_purchase) {
+        Alert.alert('Not Available', 'This item is no longer available for purchase.');
+        return;
+      }
+      
+      // Update inventory count
+      const newCount = currentItem.inventory_count - 1;
+      const { error: updateError } = await supabase
+        .from('food_items')
+        .update({ inventory_count: newCount })
+        .eq('id', item.id);
+      
+      if (updateError) throw updateError;
+      
+      // Update the local state
+      setNearbyFood(prev => 
+        prev.map(food => 
+          food.id === item.id 
+            ? { ...food, inventory_count: newCount } 
+            : food
+        )
+      );
+      
+      Alert.alert(
+        'Purchase Successful', 
+        `You've purchased ${item.name}. ${newCount > 0 ? `${newCount} remaining in stock.` : 'This was the last one in stock!'}`
+      );
+    } catch (error) {
+      console.error('Purchase error:', error);
+      Alert.alert('Error', 'Failed to complete purchase. Please try again.');
+    } finally {
+      setPurchaseInProgress(false);
+    }
+  };
+
+  const toggleSidebar = () => {
+    setSidebarVisible(!sidebarVisible);
   };
 
   return (
     <View style={styles.container}>
+      {/* Sidebar */}
+      <Sidebar 
+        navigation={navigation}
+        isVisible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+      />
+      
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>🍽️ Food Discover</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.profileButton}>
-            <Text style={styles.profileText}>Profile</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={toggleSidebar} style={styles.menuButton}>
+            <Text style={styles.menuButtonText}>☰</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+          <Text style={styles.headerTitle}>🍽️ Food Discover</Text>
         </View>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={{ paddingBottom: tabBarHeight + 20 }}
+      >
         {/* Search Section */}
         <View style={styles.searchSection}>
           <Text style={styles.sectionTitle}>Find Food Near You</Text>
@@ -216,26 +329,29 @@ export default function HomeScreen({ navigation }) {
         {nearbyFood.length > 0 && (
           <View style={styles.resultsSection}>
             <Text style={styles.sectionTitle}>
-              Found {nearbyFood.length} places nearby
+              Found {nearbyFood.length} food items nearby
             </Text>
             {nearbyFood.map((item) => (
               <TouchableOpacity
                 key={item.id}
                 style={styles.foodCard}
-                onPress={() => navigation.navigate('BusinessDetail', { businessId: item.id })}
+                onPress={() => navigation.navigate('BusinessDetail', { businessId: item.business_id })}
               >
                 <View style={styles.foodCardHeader}>
                   <View style={styles.foodCardInfo}>
-                    <Text style={styles.foodCardName}>{item.business_name}</Text>
-                    <Text style={styles.foodCardType}>{item.business_type}</Text>
-                    <Text style={styles.foodCardDistance}>
-                      📍 {item.distance?.toFixed(1)} km away
+                    <Text style={styles.foodCardName}>{item.name}</Text>
+                    <Text style={styles.foodCardType}>{item.category_name || 'Food Item'}</Text>
+                    <Text style={styles.foodCardPrice}>
+                      ₹{item.price?.toFixed(2)}
                     </Text>
-                    {item.avg_rating > 0 && (
-                      <Text style={styles.foodCardRating}>
-                        ⭐ {item.avg_rating.toFixed(1)}
-                      </Text>
-                    )}
+                    <Text style={styles.foodCardDistance}>
+                      📍 {item.distance?.toFixed(1)} km away • {item.business_name}
+                    </Text>
+                    <Text style={styles.foodCardInventory}>
+                      {item.inventory_count > 0 
+                        ? `${item.inventory_count} left in stock` 
+                        : 'Out of stock'}
+                    </Text>
                   </View>
                 </View>
 
@@ -259,6 +375,21 @@ export default function HomeScreen({ navigation }) {
                   >
                     <Text style={styles.actionButtonText}>🗺️ Directions</Text>
                   </TouchableOpacity>
+                  
+                  {item.inventory_count > 0 && item.allow_purchase && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.buyButton]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handlePurchase(item);
+                      }}
+                      disabled={purchaseInProgress}
+                    >
+                      <Text style={styles.actionButtonText}>
+                        {purchaseInProgress ? 'Processing...' : '🛒 Buy'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </TouchableOpacity>
             ))}
@@ -291,35 +422,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuButton: {
+    marginRight: 12,
+    padding: 4,
+  },
+  menuButtonText: {
+    fontSize: 24,
+    color: '#fff',
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  profileButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    marginRight: 8,
-  },
-  profileText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  logoutButton: {
-    padding: 8,
-  },
-  logoutText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
   content: {
     flex: 1,
@@ -352,6 +470,20 @@ const styles = StyleSheet.create({
   },
   rangeContainer: {
     marginBottom: 16,
+  },
+  foodCardPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2E7D32',
+    marginTop: 4,
+  },
+  foodCardInventory: {
+    fontSize: 14,
+    color: '#757575',
+    marginTop: 4,
+  },
+  buyButton: {
+    backgroundColor: '#FF6B35',
   },
   rangeButton: {
     paddingHorizontal: 20,
@@ -455,6 +587,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   foodCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
   foodCardInfo: {
@@ -473,12 +607,13 @@ const styles = StyleSheet.create({
   },
   foodCardDistance: {
     fontSize: 14,
-    color: '#FF6B35',
+    color: '#666',
     marginBottom: 4,
   },
   foodCardRating: {
     fontSize: 14,
-    color: '#FFA500',
+    color: '#FF6B35',
+    fontWeight: '600',
   },
   foodCardActions: {
     flexDirection: 'row',

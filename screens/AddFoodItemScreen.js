@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../supabase-config';
@@ -21,6 +22,8 @@ export default function AddFoodItemScreen({ route, navigation }) {
   const [categoryId, setCategoryId] = useState('');
   const [categories, setCategories] = useState([]);
   const [image, setImage] = useState(null);
+  const [inventoryCount, setInventoryCount] = useState('');
+  const [allowPurchase, setAllowPurchase] = useState(true);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -81,6 +84,8 @@ export default function AddFoodItemScreen({ route, navigation }) {
             category_id: categoryId,
             price: price ? parseFloat(price) : null,
             image_url: imageUrl,
+            inventory_count: inventoryCount ? parseInt(inventoryCount) : null,
+            allow_purchase: allowPurchase,
           },
         ])
         .select();
@@ -155,6 +160,25 @@ export default function AddFoodItemScreen({ route, navigation }) {
           multiline
           numberOfLines={4}
         />
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Inventory Count (e.g., 10 cakes available)"
+          placeholderTextColor="#999"
+          value={inventoryCount}
+          onChangeText={setInventoryCount}
+          keyboardType="numeric"
+        />
+        
+        <View style={styles.toggleContainer}>
+          <Text style={styles.toggleLabel}>Allow Purchase Requests:</Text>
+          <Switch
+            value={allowPurchase}
+            onValueChange={setAllowPurchase}
+            trackColor={{ false: '#e0e0e0', true: '#FF6B35' }}
+            thumbColor={allowPurchase ? '#fff' : '#f4f3f4'}
+          />
+        </View>
 
         <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
           <Text style={styles.imageButtonText}>
@@ -240,6 +264,22 @@ const styles = StyleSheet.create({
   categoryTextActive: {
     color: '#fff',
     fontWeight: '600',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  toggleLabel: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
   },
   imageButton: {
     backgroundColor: '#fff',
