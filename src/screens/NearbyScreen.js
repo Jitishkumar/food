@@ -12,7 +12,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { supabase } from '../../supabase-config';
 
@@ -40,10 +40,19 @@ export default function NearbyScreen({ navigation }) {
 
   const ranges = [1, 5, 10, 20, 30, 40];
   
+  const route = useRoute();
+
   useEffect(() => {
     requestLocationPermission();
     loadCategories();
-  }, []);
+    
+    // Check for category from navigation params
+    if (route.params?.selectedCategory) {
+      setSelectedCategory(route.params.selectedCategory);
+      // Clear the params to avoid reapplying on re-render
+      navigation.setParams({ selectedCategory: undefined });
+    }
+  }, [route.params?.selectedCategory]);
 
   // Function to search for places by name/address
   const searchPlaces = (query) => {

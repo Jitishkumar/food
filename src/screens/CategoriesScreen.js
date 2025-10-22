@@ -45,11 +45,43 @@ const CategoriesScreen = ({ navigation, route }) => {
     }
   }, [fetchCategories]);
 
-  const handleCategorySelect = (category) => {
-    navigation.navigate('Home', {
-      categoryId: category.id,
-      categoryName: category.name,
-    });
+  const handleCategorySelect = async (category) => {
+    try {
+      // First, check if there are any food items in this category
+      const { data: foodItems, error } = await supabase
+        .from('food_items')
+        .select('id')
+        .eq('category_id', category.id)
+        .limit(1);
+
+      if (error) throw error;
+
+      if (foodItems && foodItems.length > 0) {
+        // Navigate to the 'Nearby' tab with the category filter
+        navigation.navigate('Home', { 
+          screen: 'Nearby',
+          params: { 
+            selectedCategory: {
+              id: category.id,
+              name: category.name
+            }
+          }
+        });
+      } else {
+        // If no food items, show an alert
+        Alert.alert(
+          'No Food Available',
+          `There are currently no food items available in the ${category.name} category.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Error checking food items:', error);
+      Alert.alert(
+        'Error',
+        'Failed to check food availability. Please try again.'
+      );
+    }
   };
 
   const renderItem = ({ item }) => (
