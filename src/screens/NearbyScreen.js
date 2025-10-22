@@ -30,6 +30,9 @@ export default function NearbyScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('nearby'); // 'nearby' or 'random'
   const [placeSearchResults, setPlaceSearchResults] = useState([]);
   const [searchTimeout, setSearchTimeout] = useState(null);
+  const [searchCity, setSearchCity] = useState('');
+  const [searchState, setSearchState] = useState('');
+  const [searchFoodName, setSearchFoodName] = useState('');
 
   // Get screen dimensions for responsive layout
   const screenHeight = Dimensions.get('window').height;
@@ -126,50 +129,139 @@ export default function NearbyScreen({ navigation }) {
     }
   };
 
+  // Categorize results into sections based on match type
+  const categorizeResults = (results, foodQuery, cityQuery, stateQuery) => {
+    const exactMatch = [];
+    const cityStateMatch = [];
+    const stateOnlyMatch = [];
+
+    results.forEach(item => {
+      const foodNameMatches = !foodQuery || 
+        item.name?.toLowerCase().includes(foodQuery.toLowerCase());
+      const cityMatches = !cityQuery || 
+        item.city?.toLowerCase() === cityQuery.toLowerCase();
+      const stateMatches = !stateQuery || 
+        item.state?.toLowerCase() === stateQuery.toLowerCase();
+
+      if (foodNameMatches && cityMatches && stateMatches) {
+        exactMatch.push(item);
+      } else if (cityMatches && stateMatches) {
+        cityStateMatch.push(item);
+      } else if (stateMatches) {
+        stateOnlyMatch.push(item);
+      }
+    });
+
+    return { exactMatch, cityStateMatch, stateMatch: stateOnlyMatch };
+  };
+
   const searchNearby = async () => {
-    // If no location, try to get it first
-    if (!location) {
-      await requestLocationPermission();
+    // For Search Places tab, don't require location
+    if (activeTab === 'nearby') {
       if (!location) {
-        return; // Exit if still no location after request
+        await requestLocationPermission();
+        if (!location) {
+          return; // Exit if still no location after request
+        }
       }
     }
 
     setLoading(true);
     try {
-      // Search for businesses
-      const { data, error } = await supabase.rpc('search_businesses_nearby', {
-        user_lat: location.latitude,
-        user_lon: location.longitude,
-        search_radius: selectedRange,
-        search_query: searchQuery || null,
-        search_category: selectedCategory?.id || null,
-      });
+      let allResults = [];
 
-      if (error) throw error;
+      if (activeTab === 'nearby') {
+        // Nearby tab - use the standard search function
+        const searchParams = {
+          user_lat: location?.latitude || 0,
+          user_lon: location?.longitude || 0,
+          search_radius: selectedRange,
+          search_query: searchFoodName || null,
+          search_category: selectedCategory?.id || null,
+          search_city: searchCity || null,
+          search_state: searchState || null,
+        };
 
-      if (data && data.length > 0) {
-        setNearbyBusinesses(data);
+        const { data, error } = await supabase.rpc('search_food_items_by_location', searchParams);
+        if (error) throw error;
+        allResults = data || [];
+      } else {
+        // Search Places tab - fetch results in layers
+        // Layer 1: Exact match (food name + city + state)
+        if (searchFoodName && searchCity && searchState) {
+          const { data: exactData } = await supabase
+            .from('food_items')
+            .select('*')
+            .ilike('name', `%${searchFoodName}%`)
+            .ilike('city', `%${searchCity}%`)
+            .ilike('state', `%${searchState}%`);
+          allResults = [...(exactData || [])];
+        }
+
+        // Layer 2: City & State match (any food with same city and state)
+        if (searchCity && searchState) {
+          const { data: cityStateData } = await supabase
+            .from('food_items')
+            .select('*')
+            .ilike('city', `%${searchCity}%`)
+            .ilike('state', `%${searchState}%`);
+          
+          // Add items that aren't already in results
+          const existingIds = new Set(allResults.map(r => r.id));
+          const newItems = (cityStateData || []).filter(item => !existingIds.has(item.id));
+          allResults = [...allResults, ...newItems];
+        }
+
+        // Layer 3: State match (any food with same state)
+        if (searchState) {
+          const { data: stateData } = await supabase
+            .from('food_items')
+            .select('*')
+            .ilike('state', `%${searchState}%`);
+          
+          // Add items that aren't already in results
+          const existingIds = new Set(allResults.map(r => r.id));
+          const newItems = (stateData || []).filter(item => !existingIds.has(item.id));
+          allResults = [...allResults, ...newItems];
+        }
+      }
+
+      if (allResults && allResults.length > 0) {
+        setNearbyBusinesses(allResults);
       } else {
         // No results found
-        Alert.alert(
-          'No Results',
-          `No restaurants found within ${selectedRange}km${searchQuery ? ` matching "${searchQuery}"` : ''}${selectedCategory ? ` in category "${selectedCategory.name}"` : ''}.`,
-          [
-            { 
-              text: 'Increase Range',
-              onPress: () => setSelectedRange(prev => {
-                const nextRange = ranges.find(r => r > prev);
-                return nextRange || prev;
-              })
-            },
-            { text: 'OK', style: 'cancel' }
-          ]
-        );
+        let filterText = '';
+        if (searchFoodName) filterText += ` matching "${searchFoodName}"`;
+        if (searchCity) filterText += ` in ${searchCity}`;
+        if (searchState) filterText += `, ${searchState}`;
+        if (selectedCategory) filterText += ` in category "${selectedCategory.name}"`;
+        
+        if (activeTab === 'nearby') {
+          Alert.alert(
+            'No Results',
+            `No food items found within ${selectedRange}km${filterText}.`,
+            [
+              { 
+                text: 'Increase Range',
+                onPress: () => setSelectedRange(prev => {
+                  const nextRange = ranges.find(r => r > prev);
+                  return nextRange || prev;
+                })
+              },
+              { text: 'OK', style: 'cancel' }
+            ]
+          );
+        } else {
+          Alert.alert(
+            'No Results',
+            `No food items found${filterText}.`,
+            [{ text: 'OK' }]
+          );
+        }
       }
     } catch (error) {
       console.error('Search error:', error);
-      Alert.alert('Error', 'Failed to search nearby restaurants. Please try again.');
+      Alert.alert('Error', 'Failed to search nearby food items. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -237,60 +329,115 @@ export default function NearbyScreen({ navigation }) {
               {activeTab === 'nearby' ? 'Find Restaurants Near You' : 'Search Any Location'}
             </Text>
             
-            <TextInput
-              style={styles.searchInput}
-              placeholder={activeTab === 'nearby' ? "Search for restaurant or shop..." : "Enter location name or address..."}
-              placeholderTextColor="#999"
-              value={searchQuery}
-              onChangeText={(text) => {
-                setSearchQuery(text);
-                if (activeTab === 'random') {
-                  searchPlaces(text);
-                }
-              }}
-            />
+            {activeTab === 'nearby' ? (
+              <>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search for food name (optional)"
+                  placeholderTextColor="#999"
+                  value={searchFoodName}
+                  onChangeText={setSearchFoodName}
+                />
+                
+                <View style={styles.cityStateRow}>
+                  <TextInput
+                    style={[styles.searchInput, styles.halfInput]}
+                    placeholder="City (optional)"
+                    placeholderTextColor="#999"
+                    value={searchCity}
+                    onChangeText={setSearchCity}
+                  />
+                  <TextInput
+                    style={[styles.searchInput, styles.halfInput]}
+                    placeholder="State (optional)"
+                    placeholderTextColor="#999"
+                    value={searchState}
+                    onChangeText={setSearchState}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.sectionSubtitle}>Search by Food Name, City & State</Text>
+                
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Food Name"
+                  placeholderTextColor="#999"
+                  value={searchFoodName}
+                  onChangeText={setSearchFoodName}
+                />
 
-            {/* Place search results */}
-            {activeTab === 'random' && placeSearchResults.length > 0 && (
-              <View style={styles.searchResults}>
-                {placeSearchResults.map((place) => (
-                  <TouchableOpacity
-                    key={place.id}
-                    style={styles.searchResultItem}
-                    onPress={() => selectPlace(place)}
-                  >
-                    <Text style={styles.searchResultName}>{place.name}</Text>
-                    <Text style={styles.searchResultAddress}>{place.address}</Text>
-                  </TouchableOpacity>
-                ))}
+                <View style={styles.cityStateRow}>
+                  <TextInput
+                    style={[styles.searchInput, styles.halfInput]}
+                    placeholder="City"
+                    placeholderTextColor="#999"
+                    value={searchCity}
+                    onChangeText={setSearchCity}
+                  />
+                  <TextInput
+                    style={[styles.searchInput, styles.halfInput]}
+                    placeholder="State"
+                    placeholderTextColor="#999"
+                    value={searchState}
+                    onChangeText={setSearchState}
+                  />
+                </View>
+              </>
+            )}
+
+            {/* Display selected filters - only for nearby tab */}
+            {(searchFoodName || searchCity || searchState) && activeTab === 'nearby' && (
+              <View style={styles.selectedFiltersContainer}>
+                {searchFoodName && (
+                  <View style={styles.filterTag}>
+                    <Text style={styles.filterTagText}>🍽️ {searchFoodName}</Text>
+                  </View>
+                )}
+                {searchCity && (
+                  <View style={styles.filterTag}>
+                    <Text style={styles.filterTagText}>📍 {searchCity}</Text>
+                  </View>
+                )}
+                {searchState && (
+                  <View style={styles.filterTag}>
+                    <Text style={styles.filterTagText}>🗺️ {searchState}</Text>
+                  </View>
+                )}
               </View>
             )}
 
-            {/* Range Selection */}
-            <Text style={styles.label}>Search Range:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rangeContainer}>
-              {ranges.map((range) => (
-                <TouchableOpacity
-                  key={range}
-                  style={[
-                    styles.rangeButton,
-                    selectedRange === range && styles.rangeButtonActive,
-                  ]}
-                  onPress={() => setSelectedRange(range)}
-                >
-                  <Text
-                    style={[
-                      styles.rangeText,
-                      selectedRange === range && styles.rangeTextActive,
-                    ]}
-                  >
-                    {range} km
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {/* Range Selection - only for nearby tab */}
+            {activeTab === 'nearby' && (
+              <>
+                <Text style={styles.label}>Search Range:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rangeContainer}>
+                  {ranges.map((range) => (
+                    <TouchableOpacity
+                      key={range}
+                      style={[
+                        styles.rangeButton,
+                        selectedRange === range && styles.rangeButtonActive,
+                      ]}
+                      onPress={() => setSelectedRange(range)}
+                    >
+                      <Text
+                        style={[
+                          styles.rangeText,
+                          selectedRange === range && styles.rangeTextActive,
+                        ]}
+                      >
+                        {range} km
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
 
-            {selectedCategory && (
+            {/* Category Selection - only for nearby tab */}
+            {activeTab === 'nearby' && selectedCategory && (
               <View style={styles.selectedCategoryContainer}>
                 <Text style={styles.selectedCategoryText}>
                   Category: {selectedCategory.name}
@@ -305,12 +452,12 @@ export default function NearbyScreen({ navigation }) {
             )}
 
             <TouchableOpacity
-              style={styles.searchButton}
+              style={[styles.searchButton, loading && styles.searchButtonDisabled]}
               onPress={searchNearby}
               disabled={loading}
             >
               <Text style={styles.searchButtonText}>
-                {loading ? 'Searching...' : '🔍 Search'}
+                {loading ? 'Searching...' : activeTab === 'nearby' ? '🔍 Search Nearby' : '🔍 Search Places'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -341,53 +488,167 @@ export default function NearbyScreen({ navigation }) {
           {/* Results */}
           {nearbyBusinesses.length > 0 && (
             <View style={styles.resultsSection}>
-              <Text style={styles.sectionTitle}>
-                Found {nearbyBusinesses.length} places nearby
-              </Text>
-              {nearbyBusinesses.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.businessCard}
-                  onPress={() => navigation.navigate('BusinessDetail', { businessId: item.id })}
-                >
-                  <View style={styles.businessCardHeader}>
-                    <View style={styles.businessCardInfo}>
-                      <Text style={styles.businessCardName}>{item.business_name}</Text>
-                      <Text style={styles.businessCardType}>{item.business_type}</Text>
-                      <Text style={styles.businessCardDistance}>
-                        📍 {item.distance?.toFixed(1)} km away
-                      </Text>
-                      {item.avg_rating > 0 && (
-                        <Text style={styles.businessCardRating}>
-                          ⭐ {item.avg_rating.toFixed(1)}
-                        </Text>
+              {activeTab === 'nearby' ? (
+                // Nearby tab - show all results in one list
+                <>
+                  <Text style={styles.sectionTitle}>
+                    Found {nearbyBusinesses.length} food items nearby
+                  </Text>
+                  {nearbyBusinesses.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.businessCard}
+                      onPress={() => navigation.navigate('BusinessDetail', { businessId: item.business_id })}
+                    >
+                      <View style={styles.businessCardHeader}>
+                        <View style={styles.businessCardInfo}>
+                          <Text style={styles.businessCardName}>{item.name}</Text>
+                          <Text style={styles.businessCardType}>{item.category_name || 'Food Item'}</Text>
+                          <Text style={styles.businessCardPrice}>₹{item.price?.toFixed(2)}</Text>
+                          <Text style={styles.businessCardDistance}>
+                            📍 {item.distance?.toFixed(1)} km away • {item.business_name}
+                          </Text>
+                          {item.city && item.state && (
+                            <Text style={styles.businessCardLocation}>
+                              🗺️ {item.city}, {item.state}
+                            </Text>
+                          )}
+                          {item.average_rating > 0 && (
+                            <Text style={styles.businessCardRating}>
+                              ⭐ {item.average_rating.toFixed(1)} ({item.total_reviews} reviews)
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.businessCardActions}>
+                        <TouchableOpacity
+                          style={styles.actionButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            Linking.openURL(`tel:${item.phone_number}`);
+                          }}
+                        >
+                          <Text style={styles.actionButtonText}>📞 Call</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.actionButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            openInMaps(item.latitude, item.longitude, item.business_name);
+                          }}
+                        >
+                          <Text style={styles.actionButtonText}>🗺️ Directions</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              ) : (
+                // Search Places tab - show categorized results
+                (() => {
+                  const { exactMatch, cityStateMatch, stateMatch } = categorizeResults(
+                    nearbyBusinesses,
+                    searchFoodName,
+                    searchCity,
+                    searchState
+                  );
+
+                  const renderFoodCard = (item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.businessCard}
+                      onPress={() => navigation.navigate('BusinessDetail', { businessId: item.business_id })}
+                    >
+                      <View style={styles.businessCardHeader}>
+                        <View style={styles.businessCardInfo}>
+                          <Text style={styles.businessCardName}>{item.name}</Text>
+                          <Text style={styles.businessCardType}>{item.category_name || 'Food Item'}</Text>
+                          <Text style={styles.businessCardPrice}>₹{item.price?.toFixed(2)}</Text>
+                          <Text style={styles.businessCardDistance}>
+                            📍 {item.distance?.toFixed(1)} km away • {item.business_name}
+                          </Text>
+                          {item.city && item.state && (
+                            <Text style={styles.businessCardLocation}>
+                              🗺️ {item.city}, {item.state}
+                            </Text>
+                          )}
+                          {item.average_rating > 0 && (
+                            <Text style={styles.businessCardRating}>
+                              ⭐ {item.average_rating.toFixed(1)} ({item.total_reviews} reviews)
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.businessCardActions}>
+                        <TouchableOpacity
+                          style={styles.actionButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            Linking.openURL(`tel:${item.phone_number}`);
+                          }}
+                        >
+                          <Text style={styles.actionButtonText}>📞 Call</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.actionButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            openInMaps(item.latitude, item.longitude, item.business_name);
+                          }}
+                        >
+                          <Text style={styles.actionButtonText}>🗺️ Directions</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+                  );
+
+                  return (
+                    <>
+                      {/* Exact Match Section */}
+                      {exactMatch.length > 0 && (
+                        <View style={styles.resultCategory}>
+                          <View style={styles.categoryHeader}>
+                            <Text style={styles.categoryTitle}>🎯 Exact Match</Text>
+                            <Text style={styles.categoryCount}>{exactMatch.length} items</Text>
+                          </View>
+                          <Text style={styles.categoryDescription}>
+                            Food name, city, and state match your search
+                          </Text>
+                          {exactMatch.map(renderFoodCard)}
+                        </View>
                       )}
-                    </View>
-                  </View>
 
-                  <View style={styles.businessCardActions}>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        Linking.openURL(`tel:${item.phone_number}`);
-                      }}
-                    >
-                      <Text style={styles.actionButtonText}>📞 Call</Text>
-                    </TouchableOpacity>
+                      {/* City & State Match Section */}
+                      {cityStateMatch.length > 0 && (
+                        <View style={styles.resultCategory}>
+                          <View style={styles.categoryHeader}>
+                            <Text style={styles.categoryTitle}>📍 Same City & State</Text>
+                            <Text style={styles.categoryCount}>{cityStateMatch.length} items</Text>
+                          </View>
+                          <Text style={styles.categoryDescription}>
+                            Available in {searchCity}, {searchState}
+                          </Text>
+                          {cityStateMatch.map(renderFoodCard)}
+                        </View>
+                      )}
 
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        openInMaps(item.latitude, item.longitude, item.business_name);
-                      }}
-                    >
-                      <Text style={styles.actionButtonText}>🗺️ Directions</Text>
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                      {/* State Match Section */}
+                      {stateMatch.length > 0 && (
+                        <View style={styles.resultCategory}>
+                          <View style={styles.categoryHeader}>
+                            <Text style={styles.categoryTitle}>🗺️ Same State</Text>
+                            <Text style={styles.categoryCount}>{stateMatch.length} items</Text>
+                          </View>
+                          <Text style={styles.categoryDescription}>
+                            Available in other cities of {searchState}
+                          </Text>
+                          {stateMatch.map(renderFoodCard)}
+                        </View>
+                      )}
+                    </>
+                  );
+                })()
+              )}
             </View>
           )}
 
@@ -585,6 +846,35 @@ const styles = StyleSheet.create({
   resultsSection: {
     padding: 16,
   },
+  resultCategory: {
+    marginBottom: 32,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  categoryTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  categoryCount: {
+    fontSize: 14,
+    color: '#666',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    fontWeight: '600',
+  },
+  categoryDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
   businessCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -613,6 +903,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 4,
+  },
+  businessCardPrice: {
+    fontSize: 16,
+    color: '#FF6B35',
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  businessCardLocation: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
   },
   businessCardDistance: {
     fontSize: 14,
@@ -653,5 +954,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
+  cityStateRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  halfInput: {
+    flex: 1,
+  },
+  selectedFiltersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  filterTag: {
+    backgroundColor: '#FFE8D6',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#FF6B35',
+  },
+  filterTagText: {
+    color: '#FF6B35',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  searchButtonDisabled: {
+    opacity: 0.6,
   },
 });

@@ -17,7 +17,7 @@ import OwnerReviewsScreen from './OwnerReviewsScreen';
 
 const Tab = createBottomTabNavigator();
 
-function DashboardTab({ navigation }) {
+function DashboardTab({ navigation, route }) {
   const [businesses, setBusinesses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ totalBusinesses: 0, totalFoodItems: 0, totalReviews: 0 });
@@ -26,6 +26,13 @@ function DashboardTab({ navigation }) {
   useEffect(() => {
     loadBusinesses();
   }, []);
+
+  // Listen for refresh parameter from ManageBusinessScreen
+  useEffect(() => {
+    if (route?.params?.refresh) {
+      loadBusinesses();
+    }
+  }, [route?.params?.refresh]);
 
   useFocusEffect(
     useCallback(() => {

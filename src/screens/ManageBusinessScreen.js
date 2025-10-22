@@ -25,6 +25,8 @@ const ManageBusinessScreen = ({ route, navigation }) => {
   const [businessType, setBusinessType] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
 
@@ -44,6 +46,8 @@ const ManageBusinessScreen = ({ route, navigation }) => {
       setBusinessType(data.business_type || '');
       setPhoneNumber(data.phone_number || '');
       setAddress(data.address || '');
+      setCity(data.city || '');
+      setState(data.state || '');
       setDescription(data.description || '');
       setIsActive(data.is_active);
 
@@ -124,8 +128,19 @@ const ManageBusinessScreen = ({ route, navigation }) => {
 
               if (error) throw error;
 
-              Alert.alert('Deleted', 'Business removed successfully');
-              navigation.goBack();
+              Alert.alert(
+                'Success',
+                'Business deleted successfully',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Navigate back and trigger refresh
+                      navigation.navigate('OwnerDashboard', { refresh: Date.now() });
+                    }
+                  }
+                ]
+              );
             } catch (error) {
               console.error('Error deleting business', error);
               Alert.alert('Error', error.message || 'Failed to delete business');
@@ -199,14 +214,35 @@ const ManageBusinessScreen = ({ route, navigation }) => {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Address</Text>
+          <Text style={styles.label}>Address (Read-only)</Text>
           <TextInput
-            style={[styles.input, styles.multiline]}
+            style={[styles.input, styles.multiline, styles.disabledInput]}
             value={address}
-            onChangeText={setAddress}
             placeholder="Street, locality, city"
+            editable={false}
             multiline
           />
+        </View>
+
+        <View style={styles.cityStateRow}>
+          <View style={[styles.inputGroup, styles.halfWidth]}>
+            <Text style={styles.label}>City (Read-only)</Text>
+            <TextInput
+              style={[styles.input, styles.disabledInput]}
+              value={city}
+              placeholder="City"
+              editable={false}
+            />
+          </View>
+          <View style={[styles.inputGroup, styles.halfWidth]}>
+            <Text style={styles.label}>State (Read-only)</Text>
+            <TextInput
+              style={[styles.input, styles.disabledInput]}
+              value={state}
+              placeholder="State"
+              editable={false}
+            />
+          </View>
         </View>
 
         <View style={styles.inputGroup}>
@@ -471,6 +507,18 @@ const styles = StyleSheet.create({
   foodEditText: {
     color: '#FF6B35',
     fontWeight: '600',
+  },
+  cityStateRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  halfWidth: {
+    flex: 1,
+  },
+  disabledInput: {
+    backgroundColor: '#f0f0f0',
+    color: '#666',
   },
   deleteButton: {
     backgroundColor: '#fee2e2',

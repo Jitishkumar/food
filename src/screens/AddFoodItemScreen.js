@@ -25,10 +25,33 @@ export default function AddFoodItemScreen({ route, navigation }) {
   const [inventoryCount, setInventoryCount] = useState('');
   const [allowPurchase, setAllowPurchase] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [businessAddress, setBusinessAddress] = useState('');
 
   useEffect(() => {
     loadCategories();
+    loadBusinessDetails();
   }, []);
+
+  const loadBusinessDetails = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('businesses')
+        .select('city, state, address')
+        .eq('id', businessId)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setCity(data.city || '');
+        setState(data.state || '');
+        setBusinessAddress(data.address || '');
+      }
+    } catch (error) {
+      console.error('Error loading business details:', error);
+    }
+  };
 
   const loadCategories = async () => {
     try {
@@ -86,6 +109,8 @@ export default function AddFoodItemScreen({ route, navigation }) {
             image_url: imageUrl,
             inventory_count: inventoryCount ? parseInt(inventoryCount) : null,
             allow_purchase: allowPurchase,
+            city: city.trim(),
+            state: state.trim(),
           },
         ])
         .select();
@@ -117,6 +142,43 @@ export default function AddFoodItemScreen({ route, navigation }) {
           value={foodName}
           onChangeText={setFoodName}
         />
+
+        {businessAddress && (
+          <View style={styles.businessInfoSection}>
+            <Text style={styles.label}>Business Address (Read-only)</Text>
+            <TextInput
+              style={[styles.input, styles.disabledInput]}
+              placeholder="Address"
+              placeholderTextColor="#999"
+              value={businessAddress}
+              editable={false}
+              multiline
+            />
+          </View>
+        )}
+
+        <View style={styles.cityStateRow}>
+          <View style={styles.halfInputContainer}>
+            <Text style={styles.label}>City *</Text>
+            <TextInput
+              style={[styles.input, styles.halfInput]}
+              placeholder="Enter city"
+              placeholderTextColor="#999"
+              value={city}
+              onChangeText={setCity}
+            />
+          </View>
+          <View style={styles.halfInputContainer}>
+            <Text style={styles.label}>State *</Text>
+            <TextInput
+              style={[styles.input, styles.halfInput]}
+              placeholder="Enter state"
+              placeholderTextColor="#999"
+              value={state}
+              onChangeText={setState}
+            />
+          </View>
+        </View>
 
         <Text style={styles.label}>Category *</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
@@ -264,6 +326,29 @@ const styles = StyleSheet.create({
   categoryTextActive: {
     color: '#fff',
     fontWeight: '600',
+  },
+  businessInfoSection: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  cityStateRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  halfInputContainer: {
+    flex: 1,
+  },
+  halfInput: {
+    flex: 1,
+  },
+  disabledInput: {
+    backgroundColor: '#f0f0f0',
+    color: '#666',
   },
   toggleContainer: {
     flexDirection: 'row',

@@ -20,6 +20,8 @@ export default function AddBusinessScreen({ navigation }) {
   const [businessType, setBusinessType] = useState('restaurant');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState(null);
   const [image, setImage] = useState(null);
@@ -73,11 +75,15 @@ export default function AddBusinessScreen({ navigation }) {
       if (addressData[0]) {
         const addr = addressData[0];
         setAddress(`${addr.street || ''}, ${addr.city || ''}, ${addr.region || ''}`);
+        setCity(addr.city || '');
+        setState(addr.region || '');
       }
       
       // Clear any default address that might have been set
       if (!addressData[0]) {
         setAddress('');
+        setCity('');
+        setState('');
       }
     } catch (error) {
       Alert.alert('Error', 'Could not get location');
@@ -146,6 +152,8 @@ export default function AddBusinessScreen({ navigation }) {
             business_type: businessType,
             phone_number: phoneNumber.trim(),
             address: address.trim(),
+            city: city.trim(),
+            state: state.trim(),
             latitude: location.latitude,
             longitude: location.longitude,
             description: description.trim(),
@@ -228,6 +236,23 @@ export default function AddBusinessScreen({ navigation }) {
           editable={!location && !locationLocked}
           multiline
         />
+
+        <View style={styles.cityStateRow}>
+          <TextInput
+            style={[styles.input, styles.halfInput, styles.disabledInput]}
+            placeholder="City"
+            placeholderTextColor="#999"
+            value={city}
+            editable={false}
+          />
+          <TextInput
+            style={[styles.input, styles.halfInput, styles.disabledInput]}
+            placeholder="State"
+            placeholderTextColor="#999"
+            value={state}
+            editable={false}
+          />
+        </View>
 
         <TextInput
           style={[styles.input, styles.textArea]}
@@ -463,6 +488,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#FF6B35',
     fontWeight: '600',
+  },
+  cityStateRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  halfInput: {
+    flex: 1,
   },
   submitButton: {
     backgroundColor: '#FF6B35',
