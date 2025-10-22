@@ -9,12 +9,15 @@ import {
   Alert,
   Linking,
   Platform,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { supabase } from '../../supabase-config';
 import Sidebar from '../components/Sidebar';
+import ReviewModal from '../components/ReviewModal';
+import ReportModal from '../components/ReportModal';
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -28,6 +31,10 @@ export default function HomeScreen({ navigation }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [purchaseInProgress, setPurchaseInProgress] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(null);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [selectedFoodItem, setSelectedFoodItem] = useState(null);
 
   const route = useRoute();
 
@@ -220,6 +227,49 @@ export default function HomeScreen({ navigation }) {
     setSidebarVisible(!sidebarVisible);
   };
 
+  const openMenu = (item) => {
+    setSelectedFoodItem(item);
+    setMenuVisible(item.id);
+  };
+
+  const closeMenu = () => {
+    setMenuVisible(null);
+  };
+
+  const openReviewModal = (item) => {
+    setSelectedFoodItem(item);
+    closeMenu();
+    setReviewModalVisible(true);
+  };
+
+  const openReportModal = (item) => {
+    setSelectedFoodItem(item);
+    closeMenu();
+    setReportModalVisible(true);
+  };
+
+  const handleReviewSubmitted = () => {
+    // Refresh the food items to get updated ratings
+    searchNearby();
+  };
+
+  const renderStars = (rating) => {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+    
+    for (let i = 0; i < 5; i++) {
+      if (i < fullStars) {
+        stars.push(<Text key={i} style={styles.star}>★</Text>);
+      } else if (i === fullStars && hasHalfStar) {
+        stars.push(<Text key={i} style={styles.star}>★</Text>);
+      } else {
+        stars.push(<Text key={i} style={styles.starEmpty}>☆</Text>);
+      }
+    }
+    return stars;
+  };
+
   return (
     <View style={styles.container}>
       {/* Sidebar */}
@@ -339,11 +389,32 @@ export default function HomeScreen({ navigation }) {
               >
                 <View style={styles.foodCardHeader}>
                   <View style={styles.foodCardInfo}>
-                    <Text style={styles.foodCardName}>{item.name}</Text>
+                    <View style={styles.foodCardTopRow}>
+                      <Text style={styles.foodCardName}>{item.name}</Text>
+                      <TouchableOpacity
+                        style={styles.menuButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          openMenu(item);
+                        }}
+                      >
+                        <Text style={styles.menuButtonText}>⋮</Text>
+                      </TouchableOpacity>
+                    </View>
                     <Text style={styles.foodCardType}>{item.category_name || 'Food Item'}</Text>
                     <Text style={styles.foodCardPrice}>
                       ₹{item.price?.toFixed(2)}
                     </Text>
+                    {item.average_rating > 0 && (
+                      <View style={styles.ratingContainer}>
+                        <View style={styles.starsRow}>
+                          {renderStars(item.average_rating)}
+                        </View>
+                        <Text style={styles.ratingText}>
+                          {item.average_rating.toFixed(1)} ({item.total_reviews} {item.total_reviews === 1 ? 'review' : 'reviews'})
+                        </Text>
+                      </View>
+                    )}
                     <Text style={styles.foodCardDistance}>
                       📍 {item.distance?.toFixed(1)} km away • {item.business_name}
                     </Text>
@@ -354,6 +425,40 @@ export default function HomeScreen({ navigation }) {
                     </Text>
                   </View>
                 </View>
+
+                {/* Three-dot menu */}
+                {menuVisible === item.id && (
+                  <Modal
+                    visible={true}
+                    transparent={true}
+                    animationType="fade"
+                    onRequestClose={closeMenu}
+                  >
+                    <TouchableOpacity
+                      style={styles.menuOverlay}
+                      activeOpacity={1}
+                      onPress={closeMenu}
+                    >
+                      <View style={styles.menuDropdown}>
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => openReviewModal(item)}
+                        >
+                          <Text style={styles.menuItemIcon}>⭐</Text>
+                          <Text style={styles.menuItemText}>Rate & Review</Text>
+                        </TouchableOpacity>
+                        <View style={styles.menuDivider} />
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => openReportModal(item)}
+                        >
+                          <Text style={styles.menuItemIcon}>🚩</Text>
+                          <Text style={styles.menuItemText}>Report</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+                  </Modal>
+                )}
 
                 <View style={styles.foodCardActions}>
                   <TouchableOpacity
@@ -405,6 +510,25 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
       </ScrollView>
+
+      {/* Review Modal */}
+      {selectedFoodItem && (
+        <ReviewModal
+          visible={reviewModalVisible}
+          onClose={() => setReviewModalVisible(false)}
+          foodItem={selectedFoodItem}
+          onReviewSubmitted={handleReviewSubmitted}
+        />
+      )}
+
+      {/* Report Modal */}
+      {selectedFoodItem && (
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={() => setReportModalVisible(false)}
+          foodItem={selectedFoodItem}
+        />
+      )}
     </View>
   );
 }
@@ -594,11 +718,83 @@ const styles = StyleSheet.create({
   foodCardInfo: {
     flex: 1,
   },
+  foodCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   foodCardName: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 4,
+    flex: 1,
+  },
+  menuButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  menuButtonText: {
+    fontSize: 24,
+    color: '#666',
+    fontWeight: 'bold',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuDropdown: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    minWidth: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  menuItemIcon: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+  },
+  ratingContainer: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  star: {
+    fontSize: 16,
+    color: '#FFD700',
+    marginRight: 2,
+  },
+  starEmpty: {
+    fontSize: 16,
+    color: '#ddd',
+    marginRight: 2,
+  },
+  ratingText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
   foodCardType: {
     fontSize: 14,
