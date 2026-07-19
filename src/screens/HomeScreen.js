@@ -10,6 +10,7 @@ import {
   Linking,
   Platform,
   Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
@@ -18,6 +19,8 @@ import { supabase } from '../../supabase-config';
 import Sidebar from '../components/Sidebar';
 import ReviewModal from '../components/ReviewModal';
 import ReportModal from '../components/ReportModal';
+import StarRating from '../components/StarRating';
+import PurchaseModal from '../components/PurchaseModal';
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -35,6 +38,11 @@ export default function HomeScreen({ navigation }) {
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [selectedFoodItem, setSelectedFoodItem] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState(null);
+  const [purchaseModalVisible, setPurchaseModalVisible] = useState(false);
+  const [selectedPurchaseItem, setSelectedPurchaseItem] = useState(null);
 
   const route = useRoute();
 
@@ -43,6 +51,13 @@ export default function HomeScreen({ navigation }) {
   useEffect(() => {
     requestLocationPermission();
     loadCategories();
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
   }, []);
 
   useFocusEffect(
@@ -177,50 +192,28 @@ export default function HomeScreen({ navigation }) {
   const handlePurchase = async (item) => {
     if (purchaseInProgress) return;
     
-    setPurchaseInProgress(true);
+    // Check if user is logged in
     try {
-      // Check if inventory is still available
-      const { data: currentItem, error: checkError } = await supabase
-        .from('food_items')
-        .select('inventory_count, allow_purchase')
-        .eq('id', item.id)
-        .single();
-      
-      if (checkError) throw checkError;
-      
-      if (!currentItem || currentItem.inventory_count < 1 || !currentItem.allow_purchase) {
-        Alert.alert('Not Available', 'This item is no longer available for purchase.');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert(
+          'Login Required',
+          'Please login to purchase items.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Login', onPress: () => navigation.navigate('Login') }
+          ]
+        );
         return;
       }
-      
-      // Update inventory count
-      const newCount = currentItem.inventory_count - 1;
-      const { error: updateError } = await supabase
-        .from('food_items')
-        .update({ inventory_count: newCount })
-        .eq('id', item.id);
-      
-      if (updateError) throw updateError;
-      
-      // Update the local state
-      setNearbyFood(prev => 
-        prev.map(food => 
-          food.id === item.id 
-            ? { ...food, inventory_count: newCount } 
-            : food
-        )
-      );
-      
-      Alert.alert(
-        'Purchase Successful', 
-        `You've purchased ${item.name}. ${newCount > 0 ? `${newCount} remaining in stock.` : 'This was the last one in stock!'}`
-      );
     } catch (error) {
-      console.error('Purchase error:', error);
-      Alert.alert('Error', 'Failed to complete purchase. Please try again.');
-    } finally {
-      setPurchaseInProgress(false);
+      Alert.alert('Error', 'Please login to continue');
+      return;
     }
+    
+    // Open purchase modal with code system
+    setSelectedPurchaseItem(item);
+    setPurchaseModalVisible(true);
   };
 
   const toggleSidebar = () => {
@@ -253,21 +246,182 @@ export default function HomeScreen({ navigation }) {
     searchNearby();
   };
 
-  const renderStars = (rating) => {
-    const stars = [];
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 >= 0.5;
+  // Levenshtein Distance algorithm for fuzzy matching (typo tolerance)
+  const calculateSimilarity = (str1, str2) => {
+    const s1 = str1.toLowerCase();
+    const s2 = str2.toLowerCase();
     
-    for (let i = 0; i < 5; i++) {
-      if (i < fullStars) {
-        stars.push(<Text key={i} style={styles.star}>★</Text>);
-      } else if (i === fullStars && hasHalfStar) {
-        stars.push(<Text key={i} style={styles.star}>★</Text>);
-      } else {
-        stars.push(<Text key={i} style={styles.starEmpty}>☆</Text>);
+    // If one string contains the other, high score
+    if (s1.includes(s2) || s2.includes(s1)) return 0;
+    
+    const len1 = s1.length;
+    const len2 = s2.length;
+    const matrix = [];
+
+    // Initialize matrix
+    for (let i = 0; i <= len1; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= len2; j++) {
+      matrix[0][j] = j;
+    }
+
+    // Calculate edit distance
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,     // deletion
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j - 1] + cost // substitution
+        );
       }
     }
-    return stars;
+
+    return matrix[len1][len2];
+  };
+
+  // Check if search term is similar enough to the item name
+  const isFuzzyMatch = (itemName, searchTerm, threshold = 3) => {
+    const item = itemName.toLowerCase();
+    const search = searchTerm.toLowerCase();
+    
+    // Exact substring match
+    if (item.includes(search)) return { match: true, distance: 0 };
+    
+    // Split search term into words for better matching
+    const searchWords = search.split(' ').filter(w => w.length > 0);
+    const itemWords = item.split(' ').filter(w => w.length > 0);
+    
+    // Check each search word against each item word
+    for (const searchWord of searchWords) {
+      for (const itemWord of itemWords) {
+        const distance = calculateSimilarity(searchWord, itemWord);
+        const maxLen = Math.max(searchWord.length, itemWord.length);
+        
+        // Allow 1 character difference for every 3-4 characters
+        const allowedDistance = Math.max(1, Math.floor(maxLen / 3));
+        
+        if (distance <= Math.min(allowedDistance, threshold)) {
+          return { match: true, distance };
+        }
+      }
+    }
+    
+    // Check full string similarity
+    const fullDistance = calculateSimilarity(item, search);
+    const maxLen = Math.max(item.length, search.length);
+    const allowedDistance = Math.max(2, Math.floor(maxLen / 4));
+    
+    if (fullDistance <= Math.min(allowedDistance, threshold)) {
+      return { match: true, distance: fullDistance };
+    }
+    
+    return { match: false, distance: fullDistance };
+  };
+
+  const fetchSuggestions = async (query) => {
+    if (!query || query.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    try {
+      const searchTerm = query.trim().toLowerCase();
+      
+      // Fetch more items for fuzzy matching
+      const { data: allFoodItems, error: foodError } = await supabase
+        .from('food_items')
+        .select('id, name, category_id')
+        .eq('is_available', true)
+        .limit(100);
+
+      if (foodError) throw foodError;
+
+      const { data: allCategories, error: categoryError } = await supabase
+        .from('categories')
+        .select('id, name')
+        .limit(50);
+
+      if (categoryError) throw categoryError;
+
+      // Filter with fuzzy matching
+      const matchedFoodItems = (allFoodItems || [])
+        .map(item => ({
+          ...item,
+          fuzzyMatch: isFuzzyMatch(item.name, searchTerm),
+        }))
+        .filter(item => item.fuzzyMatch.match)
+        .sort((a, b) => a.fuzzyMatch.distance - b.fuzzyMatch.distance)
+        .slice(0, 5);
+
+      const matchedCategories = (allCategories || [])
+        .map(cat => ({
+          ...cat,
+          fuzzyMatch: isFuzzyMatch(cat.name, searchTerm),
+        }))
+        .filter(cat => cat.fuzzyMatch.match)
+        .sort((a, b) => a.fuzzyMatch.distance - b.fuzzyMatch.distance)
+        .slice(0, 3);
+
+      // Combine and format suggestions
+      const combinedSuggestions = [
+        ...matchedCategories.map(cat => ({
+          id: `category-${cat.id}`,
+          name: cat.name,
+          type: 'category',
+          icon: '📋',
+          actualId: cat.id,
+          distance: cat.fuzzyMatch.distance,
+        })),
+        ...matchedFoodItems.map(food => ({
+          id: `food-${food.id}`,
+          name: food.name,
+          type: 'food',
+          icon: '🍽️',
+          actualId: food.id,
+          distance: food.fuzzyMatch.distance,
+        })),
+      ];
+
+      // Sort by fuzzy match quality (lower distance = better match)
+      combinedSuggestions.sort((a, b) => a.distance - b.distance);
+
+      setSuggestions(combinedSuggestions);
+      setShowSuggestions(combinedSuggestions.length > 0);
+    } catch (error) {
+      console.error('Error fetching suggestions:', error);
+    }
+  };
+
+  const handleSearchQueryChange = (text) => {
+    setSearchQuery(text);
+    
+    // Clear previous timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    
+    // Debounce: wait 300ms after user stops typing
+    const timeoutId = setTimeout(() => {
+      fetchSuggestions(text);
+    }, 300);
+    
+    setSearchTimeout(timeoutId);
+  };
+
+  const selectSuggestion = (suggestion) => {
+    setSearchQuery(suggestion.name);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    
+    if (suggestion.type === 'category') {
+      setSelectedCategory({
+        id: suggestion.actualId,
+        name: suggestion.name,
+      });
+    }
   };
 
   return (
@@ -292,18 +446,61 @@ export default function HomeScreen({ navigation }) {
       <ScrollView 
         style={styles.content}
         contentContainerStyle={{ paddingBottom: tabBarHeight + 20 }}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={!showSuggestions}
       >
+        <TouchableWithoutFeedback onPress={() => setShowSuggestions(false)}>
+          <View style={{ flex: 1 }}>
         {/* Search Section */}
         <View style={styles.searchSection}>
           <Text style={styles.sectionTitle}>Find Food Near You</Text>
           
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search for food, restaurant, or cuisine..."
-            placeholderTextColor="#999"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search for food, restaurant, or cuisine..."
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={handleSearchQueryChange}
+              onFocus={() => {
+                if (searchQuery.trim().length >= 2 && suggestions.length > 0) {
+                  setShowSuggestions(true);
+                }
+              }}
+            />
+
+            {/* Suggestions Dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                <ScrollView 
+                  style={styles.suggestionsList}
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled={true}
+                >
+                  {suggestions.map((suggestion) => (
+                    <TouchableOpacity
+                      key={suggestion.id}
+                      style={styles.suggestionItem}
+                      onPress={() => selectSuggestion(suggestion)}
+                    >
+                      <Text style={styles.suggestionIcon}>{suggestion.icon}</Text>
+                      <View style={styles.suggestionTextContainer}>
+                        <Text style={styles.suggestionName}>{suggestion.name}</Text>
+                        <View style={styles.suggestionBottomRow}>
+                          <Text style={styles.suggestionType}>
+                            {suggestion.type === 'category' ? 'Category' : 'Food Item'}
+                          </Text>
+                          {suggestion.distance > 0 && (
+                            <Text style={styles.didYouMeanText}>Did you mean this?</Text>
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
 
           {/* Range Selection */}
           <Text style={styles.label}>Search Range:</Text>
@@ -405,16 +602,21 @@ export default function HomeScreen({ navigation }) {
                     <Text style={styles.foodCardPrice}>
                       ₹{item.price?.toFixed(2)}
                     </Text>
+                    
+                    {/* Star Rating */}
                     {item.average_rating > 0 && (
                       <View style={styles.ratingContainer}>
-                        <View style={styles.starsRow}>
-                          {renderStars(item.average_rating)}
-                        </View>
+                        <StarRating 
+                          rating={item.average_rating} 
+                          size={16}
+                          showNumber={false}
+                        />
                         <Text style={styles.ratingText}>
                           {item.average_rating.toFixed(1)} ({item.total_reviews} {item.total_reviews === 1 ? 'review' : 'reviews'})
                         </Text>
                       </View>
                     )}
+                    
                     <Text style={styles.foodCardDistance}>
                       📍 {item.distance?.toFixed(1)} km away • {item.business_name}
                     </Text>
@@ -509,7 +711,22 @@ export default function HomeScreen({ navigation }) {
             </Text>
           </View>
         )}
+          </View>
+        </TouchableWithoutFeedback>
       </ScrollView>
+
+      {/* Purchase Modal */}
+      {selectedPurchaseItem && (
+        <PurchaseModal
+          visible={purchaseModalVisible}
+          onClose={() => setPurchaseModalVisible(false)}
+          foodItem={selectedPurchaseItem}
+          onSuccess={() => {
+            Alert.alert('Request Sent!', 'The seller will be notified. You will get a notification when they approve. 🔔');
+            searchNearby(); // Refresh results
+          }}
+        />
+      )}
 
       {/* Review Modal */}
       {selectedFoodItem && (
@@ -570,12 +787,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 20,
     marginBottom: 16,
+    position: 'relative',
+    zIndex: 1000,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 16,
+  },
+  searchContainer: {
+    position: 'relative',
+    zIndex: 1000,
   },
   searchInput: {
     backgroundColor: '#f5f5f5',
@@ -585,6 +808,61 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#e0e0e0',
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: 60,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    maxHeight: 250,
+    zIndex: 1001,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  suggestionsList: {
+    maxHeight: 250,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  suggestionIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  suggestionTextContainer: {
+    flex: 1,
+  },
+  suggestionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  suggestionBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  suggestionType: {
+    fontSize: 12,
+    color: '#999',
+  },
+  didYouMeanText: {
+    fontSize: 11,
+    color: '#FF6B35',
+    fontStyle: 'italic',
+    fontWeight: '500',
   },
   label: {
     fontSize: 14,
@@ -776,25 +1054,13 @@ const styles = StyleSheet.create({
   ratingContainer: {
     marginTop: 4,
     marginBottom: 4,
-  },
-  starsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  star: {
-    fontSize: 16,
-    color: '#FFD700',
-    marginRight: 2,
-  },
-  starEmpty: {
-    fontSize: 16,
-    color: '#ddd',
-    marginRight: 2,
   },
   ratingText: {
     fontSize: 12,
     color: '#666',
-    marginTop: 2,
+    marginLeft: 8,
   },
   foodCardType: {
     fontSize: 14,

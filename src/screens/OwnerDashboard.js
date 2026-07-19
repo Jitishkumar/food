@@ -121,6 +121,12 @@ function DashboardTab({ navigation, route }) {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>🏪 Owner Dashboard</Text>
         </View>
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('Notifications')}
+          style={styles.notificationButton}
+        >
+          <Text style={styles.notificationButtonText}>🔔</Text>
+        </TouchableOpacity>
       </View>
       
       <ScrollView
@@ -285,6 +291,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
+    color: '#fff',
+  },
+  notificationButton: {
+    padding: 8,
+    marginLeft: 12,
+  },
+  notificationButtonText: {
+    fontSize: 24,
     color: '#fff',
   },
   headerActions: {

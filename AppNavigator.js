@@ -17,6 +17,8 @@ import BusinessDetailScreen from './src/screens/BusinessDetailScreen';
 import CategoriesScreen from './src/screens/CategoriesScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ManageBusinessScreen from './src/screens/ManageBusinessScreen';
+import MoreTabScreen from './src/screens/MoreTabScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -31,6 +33,10 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
         return focused ? '🍽️' : '🍴';
       case 'Nearby':
         return focused ? '🏪' : '🏬';
+      case 'Notifications':
+        return focused ? '🔔' : '🔕';
+      case 'More':
+        return focused ? '⚡' : '⭐';
       default:
         return '🍽️';
     }
@@ -153,6 +159,11 @@ const OwnerStack = () => (
   >
     <Stack.Screen name="OwnerDashboard" component={OwnerDashboard} />
     <Stack.Screen
+      name="Notifications"
+      component={NotificationsScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
       name="Profile"
       component={ProfileScreen}
       options={{ 
@@ -268,6 +279,20 @@ const CustomerTabs = () => (
       component={NearbyStack}
       options={{
         tabBarLabel: 'Nearby Places',
+      }}
+    />
+    <Tab.Screen
+      name="Notifications"
+      component={NotificationsScreen}
+      options={{
+        tabBarLabel: 'Notifications',
+      }}
+    />
+    <Tab.Screen
+      name="More"
+      component={MoreTabScreen}
+      options={{
+        tabBarLabel: 'More',
       }}
     />
   </Tab.Navigator>

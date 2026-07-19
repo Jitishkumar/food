@@ -138,30 +138,14 @@ export default function NearbyScreen({ navigation }) {
     }
   };
 
-  // Categorize results into sections based on match type
-  const categorizeResults = (results, foodQuery, cityQuery, stateQuery) => {
-    const exactMatch = [];
-    const cityStateMatch = [];
-    const stateOnlyMatch = [];
-
-    results.forEach(item => {
-      const foodNameMatches = !foodQuery || 
-        item.name?.toLowerCase().includes(foodQuery.toLowerCase());
-      const cityMatches = !cityQuery || 
-        item.city?.toLowerCase() === cityQuery.toLowerCase();
-      const stateMatches = !stateQuery || 
-        item.state?.toLowerCase() === stateQuery.toLowerCase();
-
-      if (foodNameMatches && cityMatches && stateMatches) {
-        exactMatch.push(item);
-      } else if (cityMatches && stateMatches) {
-        cityStateMatch.push(item);
-      } else if (stateMatches) {
-        stateOnlyMatch.push(item);
-      }
+  const openInMaps = (latitude, longitude, businessName) => {
+    const url = Platform.OS === 'ios'
+      ? `maps://app?daddr=${latitude},${longitude}`
+      : `geo:${latitude},${longitude}?q=${latitude},${longitude}(${businessName})`;
+    
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Could not open maps');
     });
-
-    return { exactMatch, cityStateMatch, stateMatch: stateOnlyMatch };
   };
 
   const searchNearby = async () => {
@@ -195,43 +179,99 @@ export default function NearbyScreen({ navigation }) {
         if (error) throw error;
         allResults = data || [];
       } else {
-        // Search Places tab - fetch results in layers
-        // Layer 1: Exact match (food name + city + state)
-        if (searchFoodName && searchCity && searchState) {
-          const { data: exactData } = await supabase
-            .from('food_items')
-            .select('*')
-            .ilike('name', `%${searchFoodName}%`)
-            .ilike('city', `%${searchCity}%`)
-            .ilike('state', `%${searchState}%`);
-          allResults = [...(exactData || [])];
+        // Search Places tab - get user's location for distance calculation
+        let userLat = null;
+        let userLon = null;
+        
+        try {
+          if (!location) {
+            await requestLocationPermission();
+          }
+          if (location) {
+            userLat = location.latitude;
+            userLon = location.longitude;
+          }
+        } catch (error) {
+          console.log('Could not get location for distance calculation');
         }
 
-        // Layer 2: City & State match (any food with same city and state)
-        if (searchCity && searchState) {
-          const { data: cityStateData } = await supabase
-            .from('food_items')
-            .select('*')
-            .ilike('city', `%${searchCity}%`)
-            .ilike('state', `%${searchState}%`);
-          
-          // Add items that aren't already in results
-          const existingIds = new Set(allResults.map(r => r.id));
-          const newItems = (cityStateData || []).filter(item => !existingIds.has(item.id));
-          allResults = [...allResults, ...newItems];
-        }
+        // Build query based on what user entered
+        let query = supabase
+          .from('food_items')
+          .select(`
+            *,
+            businesses!inner (
+              id,
+              business_name,
+              phone_number,
+              latitude,
+              longitude
+            )
+          `)
+          .eq('is_available', true);
 
-        // Layer 3: State match (any food with same state)
+        // Add filters based on user input
+        if (searchFoodName) {
+          query = query.ilike('name', `%${searchFoodName}%`);
+        }
+        if (searchCity) {
+          query = query.ilike('city', `%${searchCity}%`);
+        }
         if (searchState) {
-          const { data: stateData } = await supabase
-            .from('food_items')
-            .select('*')
-            .ilike('state', `%${searchState}%`);
-          
-          // Add items that aren't already in results
-          const existingIds = new Set(allResults.map(r => r.id));
-          const newItems = (stateData || []).filter(item => !existingIds.has(item.id));
-          allResults = [...allResults, ...newItems];
+          query = query.ilike('state', `%${searchState}%`);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        // Calculate distance for each item if we have location
+        if (data && userLat && userLon) {
+          allResults = data.map(item => {
+            const businessLat = item.businesses?.latitude;
+            const businessLon = item.businesses?.longitude;
+            
+            let distance = null;
+            if (businessLat && businessLon) {
+              // Calculate distance using Haversine formula
+              const R = 6371; // Earth's radius in km
+              const dLat = (businessLat - userLat) * Math.PI / 180;
+              const dLon = (businessLon - userLon) * Math.PI / 180;
+              const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(userLat * Math.PI / 180) * Math.cos(businessLat * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+              const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+              distance = R * c;
+            }
+
+            return {
+              ...item,
+              business_id: item.businesses?.id,
+              business_name: item.businesses?.business_name,
+              phone_number: item.businesses?.phone_number,
+              latitude: item.businesses?.latitude,
+              longitude: item.businesses?.longitude,
+              distance: distance,
+            };
+          });
+
+          // Sort by distance (closest first)
+          allResults.sort((a, b) => {
+            if (a.distance === null) return 1;
+            if (b.distance === null) return -1;
+            return a.distance - b.distance;
+          });
+        } else {
+          // No location, just format the data without distance
+          allResults = data.map(item => ({
+            ...item,
+            business_id: item.businesses?.id,
+            business_name: item.businesses?.business_name,
+            phone_number: item.businesses?.phone_number,
+            latitude: item.businesses?.latitude,
+            longitude: item.businesses?.longitude,
+            distance: null,
+          }));
         }
       }
 
@@ -288,16 +328,6 @@ export default function NearbyScreen({ navigation }) {
     } catch (error) {
       console.error('Error loading categories:', error);
     }
-  };
-
-  const openInMaps = (latitude, longitude, businessName) => {
-    const url = Platform.OS === 'ios'
-      ? `maps://app?daddr=${latitude},${longitude}`
-      : `geo:${latitude},${longitude}?q=${latitude},${longitude}(${businessName})`;
-    
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Error', 'Could not open maps');
-    });
   };
 
   return (
@@ -497,167 +527,76 @@ export default function NearbyScreen({ navigation }) {
           {/* Results */}
           {nearbyBusinesses.length > 0 && (
             <View style={styles.resultsSection}>
-              {activeTab === 'nearby' ? (
-                // Nearby tab - show all results in one list
-                <>
-                  <Text style={styles.sectionTitle}>
-                    Found {nearbyBusinesses.length} food items nearby
-                  </Text>
-                  {nearbyBusinesses.map((item) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.businessCard}
-                      onPress={() => navigation.navigate('BusinessDetail', { businessId: item.business_id })}
-                    >
-                      <View style={styles.businessCardHeader}>
-                        <View style={styles.businessCardInfo}>
-                          <Text style={styles.businessCardName}>{item.name}</Text>
-                          <Text style={styles.businessCardType}>{item.category_name || 'Food Item'}</Text>
-                          <Text style={styles.businessCardPrice}>₹{item.price?.toFixed(2)}</Text>
-                          <Text style={styles.businessCardDistance}>
-                            📍 {item.distance?.toFixed(1)} km away • {item.business_name}
-                          </Text>
-                          {item.city && item.state && (
-                            <Text style={styles.businessCardLocation}>
-                              🗺️ {item.city}, {item.state}
-                            </Text>
-                          )}
-                          {item.average_rating > 0 && (
-                            <Text style={styles.businessCardRating}>
-                              ⭐ {item.average_rating.toFixed(1)} ({item.total_reviews} reviews)
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                      <View style={styles.businessCardActions}>
-                        <TouchableOpacity
-                          style={styles.actionButton}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            Linking.openURL(`tel:${item.phone_number}`);
-                          }}
-                        >
-                          <Text style={styles.actionButtonText}>📞 Call</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.actionButton}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            openInMaps(item.latitude, item.longitude, item.business_name);
-                          }}
-                        >
-                          <Text style={styles.actionButtonText}>🗺️ Directions</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </>
-              ) : (
-                // Search Places tab - show categorized results
-                (() => {
-                  const { exactMatch, cityStateMatch, stateMatch } = categorizeResults(
-                    nearbyBusinesses,
-                    searchFoodName,
-                    searchCity,
-                    searchState
-                  );
-
-                  const renderFoodCard = (item) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.businessCard}
-                      onPress={() => navigation.navigate('BusinessDetail', { businessId: item.business_id })}
-                    >
-                      <View style={styles.businessCardHeader}>
-                        <View style={styles.businessCardInfo}>
-                          <Text style={styles.businessCardName}>{item.name}</Text>
-                          <Text style={styles.businessCardType}>{item.category_name || 'Food Item'}</Text>
-                          <Text style={styles.businessCardPrice}>₹{item.price?.toFixed(2)}</Text>
-                          <Text style={styles.businessCardDistance}>
-                            📍 {item.distance?.toFixed(1)} km away • {item.business_name}
-                          </Text>
-                          {item.city && item.state && (
-                            <Text style={styles.businessCardLocation}>
-                              🗺️ {item.city}, {item.state}
-                            </Text>
-                          )}
-                          {item.average_rating > 0 && (
-                            <Text style={styles.businessCardRating}>
-                              ⭐ {item.average_rating.toFixed(1)} ({item.total_reviews} reviews)
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                      <View style={styles.businessCardActions}>
-                        <TouchableOpacity
-                          style={styles.actionButton}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            Linking.openURL(`tel:${item.phone_number}`);
-                          }}
-                        >
-                          <Text style={styles.actionButtonText}>📞 Call</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.actionButton}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            openInMaps(item.latitude, item.longitude, item.business_name);
-                          }}
-                        >
-                          <Text style={styles.actionButtonText}>🗺️ Directions</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </TouchableOpacity>
-                  );
-
-                  return (
-                    <>
-                      {/* Exact Match Section */}
-                      {exactMatch.length > 0 && (
-                        <View style={styles.resultCategory}>
-                          <View style={styles.categoryHeader}>
-                            <Text style={styles.categoryTitle}>🎯 Exact Match</Text>
-                            <Text style={styles.categoryCount}>{exactMatch.length} items</Text>
-                          </View>
-                          <Text style={styles.categoryDescription}>
-                            Food name, city, and state match your search
-                          </Text>
-                          {exactMatch.map(renderFoodCard)}
-                        </View>
-                      )}
-
-                      {/* City & State Match Section */}
-                      {cityStateMatch.length > 0 && (
-                        <View style={styles.resultCategory}>
-                          <View style={styles.categoryHeader}>
-                            <Text style={styles.categoryTitle}>📍 Same City & State</Text>
-                            <Text style={styles.categoryCount}>{cityStateMatch.length} items</Text>
-                          </View>
-                          <Text style={styles.categoryDescription}>
-                            Available in {searchCity}, {searchState}
-                          </Text>
-                          {cityStateMatch.map(renderFoodCard)}
-                        </View>
-                      )}
-
-                      {/* State Match Section */}
-                      {stateMatch.length > 0 && (
-                        <View style={styles.resultCategory}>
-                          <View style={styles.categoryHeader}>
-                            <Text style={styles.categoryTitle}>🗺️ Same State</Text>
-                            <Text style={styles.categoryCount}>{stateMatch.length} items</Text>
-                          </View>
-                          <Text style={styles.categoryDescription}>
-                            Available in other cities of {searchState}
-                          </Text>
-                          {stateMatch.map(renderFoodCard)}
-                        </View>
-                      )}
-                    </>
-                  );
-                })()
+              <Text style={styles.sectionTitle}>
+                Found {nearbyBusinesses.length} food item{nearbyBusinesses.length !== 1 ? 's' : ''}
+                {activeTab === 'nearby' ? ' nearby' : ''}
+              </Text>
+              {activeTab === 'nearby' && (
+                <Text style={styles.resultsSubtitle}>
+                  Sorted by distance (closest first)
+                </Text>
               )}
+              {activeTab === 'random' && location && (
+                <Text style={styles.resultsSubtitle}>
+                  Sorted by distance from your location
+                </Text>
+              )}
+              
+              {nearbyBusinesses.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.businessCard}
+                  onPress={() => navigation.navigate('BusinessDetail', { businessId: item.business_id })}
+                >
+                  <View style={styles.businessCardHeader}>
+                    <View style={styles.businessCardInfo}>
+                      <Text style={styles.businessCardName}>{item.name}</Text>
+                      <Text style={styles.businessCardType}>{item.category_name || 'Food Item'}</Text>
+                      <Text style={styles.businessCardPrice}>₹{item.price?.toFixed(2)}</Text>
+                      {item.distance !== null && (
+                        <Text style={styles.businessCardDistance}>
+                          📍 {item.distance.toFixed(1)} km away • {item.business_name}
+                        </Text>
+                      )}
+                      {item.distance === null && (
+                        <Text style={styles.businessCardDistance}>
+                          📍 {item.business_name}
+                        </Text>
+                      )}
+                      {item.city && item.state && (
+                        <Text style={styles.businessCardLocation}>
+                          🗺️ {item.city}, {item.state}
+                        </Text>
+                      )}
+                      {item.average_rating > 0 && (
+                        <Text style={styles.businessCardRating}>
+                          ⭐ {item.average_rating.toFixed(1)} ({item.total_reviews} reviews)
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.businessCardActions}>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        Linking.openURL(`tel:${item.phone_number}`);
+                      }}
+                    >
+                      <Text style={styles.actionButtonText}>📞 Call</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        openInMaps(item.latitude, item.longitude, item.business_name);
+                      }}
+                    >
+                      <Text style={styles.actionButtonText}>🗺️ Directions</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
           )}
 
@@ -758,7 +697,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
+    marginBottom: 8,
+  },
+  resultsSubtitle: {
+    fontSize: 14,
+    color: '#666',
     marginBottom: 16,
+    fontStyle: 'italic',
   },
   searchInput: {
     backgroundColor: '#f5f5f5',

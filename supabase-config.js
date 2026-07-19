@@ -1,8 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const SUPABASE_URL = 'https://sikuvuepkmuoxvrwvjyo.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpa3V2dWVwa211b3h2cnd2anlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkzMjkyOTMsImV4cCI6MjA3NDkwNTI5M30.6X4kOEc02VhyTkd2SOnEIic1WKxYgPgcV027W8WyG8c';
+// Import from environment variables - NO FALLBACKS
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+// Validate environment variables are loaded
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error(
+    'Missing Supabase environment variables!\n' +
+    'Make sure .env file exists with:\n' +
+    'SUPABASE_URL=your_url\n' +
+    'SUPABASE_ANON_KEY=your_key\n\n' +
+    'Then run: npx expo start --clear'
+  );
+}
 
 // Create a simple custom event emitter for React Native
 class CustomEventEmitter {

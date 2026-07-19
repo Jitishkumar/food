@@ -325,3 +325,12 @@ For questions or support:
 **Built with ❤️ for food lovers and local businesses**
 
 Start discovering authentic local food today! 🍽️
+
+
+
+
+
+
+
+
+#OwnerDashboard.js  i want in right top right show stars of post card in everypost card and customer can mark rating with reviews and in last of bussiness post card u will see reviews u can select star rating like 5 to see 5 star rating and reviews 1 star to see rating and reviews and report look i am leaving it on u i am just telling u my ideaa build it like i want owner will post fisst his shop location fetch automatically and then he can add products in it user can buy to buy it look for buying he will click on buy on contact if clicked on contact he will see owner phone number whatsapp number when click on buy he will get unique 5 digit code which a owner has to type in his account after delivering that delivery for each buy user will recive some coins like 2 coins for each buy i want when user will click on buy he will see 5 digit code when owner will type in his account like owner will get notification by username he can declince also he has to enter code then user will see a image which can be pament details mention it like owner qr for payment when user will pay on it and owner approve it he will get coins also in bottom bar make button more here owner can see anything like room for rent any srvice like owner wants to be driver with the salary he is expecting tent person amount for days ,dancer per hour charge, freelancer charges for website i want like thisdo all this u can annalyze my all #src  src folder so u will get idea. for this 
